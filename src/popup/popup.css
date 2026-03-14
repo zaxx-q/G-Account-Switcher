@@ -1,0 +1,535 @@
+/* ───── Theme variables ───── */
+:root {
+  /* Surface / background */
+  --bg-body: #f8f9fa;
+  --bg-surface: #fff;
+  --bg-hover: #f1f3f4;
+  --bg-selected: #e8f0fe;
+
+  /* Text */
+  --text-primary: #202124;
+  --text-secondary: #5f6368;
+  --text-tertiary: #80868b;
+
+  /* Accent */
+  --accent: #1a73e8;
+  --accent-hover: #1557b0;
+  --accent-surface: #e8f0fe;
+
+  /* Borders */
+  --border: #dadce0;
+  --border-hover: #c6c8cc;
+
+  /* Toggle */
+  --toggle-off: #dadce0;
+  --toggle-knob: #fff;
+  --toggle-shadow: rgba(0, 0, 0, 0.2);
+
+  /* Account index badge */
+  --badge-bg: #e8eaed;
+  --badge-text: #5f6368;
+
+  /* Text on accent background */
+  --on-accent: #fff;
+
+  /* Danger */
+  --danger: #d93025;
+  --danger-surface: #fce8e6;
+
+  /* Status */
+  --status-success-bg: #e6f4ea;
+  --status-success-text: #137333;
+  --status-error-bg: #fce8e6;
+  --status-error-text: #c5221f;
+  --status-info-bg: #e8f0fe;
+  --status-info-text: #1967d2;
+
+  /* Focus ring */
+  --focus-ring: rgba(26, 115, 232, 0.15);
+
+  /* Scrollbar */
+  --scrollbar-thumb: #dadce0;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg-body: #202124;
+    --bg-surface: #292a2d;
+    --bg-hover: #3c4043;
+    --bg-selected: #1e3a5f;
+
+    --text-primary: #e8eaed;
+    --text-secondary: #9aa0a6;
+    --text-tertiary: #80868b;
+
+    --accent: #8ab4f8;
+    --accent-hover: #aecbfa;
+    --accent-surface: #303134;
+
+    --border: #3c4043;
+    --border-hover: #5f6368;
+
+    --toggle-off: #5f6368;
+    --toggle-knob: #e8eaed;
+    --toggle-shadow: rgba(0, 0, 0, 0.4);
+
+    --badge-bg: #3c4043;
+    --badge-text: #9aa0a6;
+
+    --on-accent: #202124;
+
+    --danger: #f28b82;
+    --danger-surface: #3c2020;
+
+    --status-success-bg: #1e3a2f;
+    --status-success-text: #81c995;
+    --status-error-bg: #3c2020;
+    --status-error-text: #f28b82;
+    --status-info-bg: #1e3a5f;
+    --status-info-text: #8ab4f8;
+
+    --focus-ring: rgba(138, 180, 248, 0.3);
+
+    --scrollbar-thumb: #5f6368;
+  }
+}
+
+/* ───── Base ───── */
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+  font-size: 13px;
+  color: var(--text-primary);
+  background: var(--bg-body);
+  min-width: 320px;
+  max-width: 360px;
+}
+
+.container {
+  padding: 12px;
+}
+
+.hidden {
+  display: none !important;
+}
+
+/* ───── Header ───── */
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 10px;
+}
+
+.title {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--accent);
+  letter-spacing: -0.2px;
+}
+
+/* ───── Toggle switch ───── */
+.toggle-wrap {
+  position: relative;
+}
+
+.toggle-wrap input[type="checkbox"] {
+  appearance: none;
+  width: 36px;
+  height: 20px;
+  background: var(--toggle-off);
+  border-radius: 10px;
+  cursor: pointer;
+  transition: background 0.2s;
+  position: relative;
+}
+
+.toggle-wrap input[type="checkbox"]::after {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 16px;
+  height: 16px;
+  background: var(--toggle-knob);
+  border-radius: 50%;
+  transition: transform 0.2s;
+  box-shadow: 0 1px 3px var(--toggle-shadow);
+}
+
+.toggle-wrap input[type="checkbox"]:checked {
+  background: var(--accent);
+}
+
+.toggle-wrap input[type="checkbox"]:checked::after {
+  transform: translateX(16px);
+}
+
+.toggle-label {
+  display: none; /* label is for a11y, switch is styled via input */
+}
+
+/* ───── Sections ───── */
+.section {
+  margin-bottom: 10px;
+}
+
+.section-label {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+  letter-spacing: 0.5px;
+}
+
+.section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+
+.mode-section {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--border);
+}
+
+/* ───── Select ───── */
+.select {
+  flex: 1;
+  padding: 5px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-surface);
+  font-size: 12px;
+  color: var(--text-primary);
+  cursor: pointer;
+  outline: none;
+}
+
+.select:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--focus-ring);
+}
+
+/* ───── Buttons ───── */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 12px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-surface);
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-primary);
+  cursor: pointer;
+  transition: all 0.15s;
+  white-space: nowrap;
+}
+
+.btn:hover {
+  background: var(--bg-hover);
+  border-color: var(--border-hover);
+}
+
+.btn:active {
+  transform: scale(0.97);
+}
+
+.btn-sm {
+  padding: 4px 10px;
+  font-size: 11px;
+}
+
+.btn-primary {
+  background: var(--accent);
+  color: var(--on-accent);
+  border-color: var(--accent);
+}
+
+.btn-primary:hover {
+  background: var(--accent-hover);
+  border-color: var(--accent-hover);
+}
+
+.btn-detect {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+.btn-detect:hover {
+  background: var(--accent-surface);
+}
+
+.btn-detect.loading {
+  opacity: 0.6;
+  pointer-events: none;
+}
+
+.btn-add {
+  color: var(--accent);
+}
+
+.btn-danger {
+  color: var(--danger);
+  border-color: transparent;
+  background: transparent;
+  padding: 4px 6px;
+}
+
+.btn-danger:hover {
+  background: var(--danger-surface);
+}
+
+/* ───── Account list ───── */
+.account-list {
+  max-height: 180px;
+  overflow-y: auto;
+}
+
+.account-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 8px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 0.15s;
+  position: relative;
+}
+
+.account-item:hover {
+  background: var(--bg-hover);
+}
+
+.account-item.selected {
+  background: var(--bg-selected);
+}
+
+.account-item input[type="radio"] {
+  accent-color: var(--accent);
+  margin: 0;
+  flex-shrink: 0;
+}
+
+.account-info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.account-primary {
+  font-size: 13px;
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.account-secondary {
+  font-size: 11px;
+  color: var(--text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.account-index {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--badge-bg);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--badge-text);
+  flex-shrink: 0;
+}
+
+.account-item.selected .account-index {
+  background: var(--accent);
+  color: var(--on-accent);
+}
+
+.account-actions {
+  display: flex;
+  gap: 2px;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+.account-item:hover .account-actions {
+  opacity: 1;
+}
+
+/* ───── Empty state ───── */
+.empty-state {
+  text-align: center;
+  padding: 16px 8px;
+  color: var(--text-secondary);
+}
+
+.empty-state .hint {
+  font-size: 11px;
+  color: var(--text-tertiary);
+  margin-top: 4px;
+}
+
+/* ───── Add account form ───── */
+.add-account {
+  margin-top: 6px;
+  text-align: center;
+}
+
+.add-form {
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px;
+}
+
+.form-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.form-label {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  width: 44px;
+  flex-shrink: 0;
+}
+
+.input {
+  flex: 1;
+  padding: 5px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-size: 12px;
+  color: var(--text-primary);
+  outline: none;
+  background: var(--bg-surface);
+}
+
+.input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--focus-ring);
+}
+
+.input-sm {
+  width: 50px;
+  flex: none;
+}
+
+.form-actions {
+  display: flex;
+  gap: 6px;
+  justify-content: flex-end;
+  margin-top: 4px;
+}
+
+/* ───── Override list ───── */
+.override-list {
+  max-height: 120px;
+  overflow-y: auto;
+}
+
+.override-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 5px 8px;
+  border-radius: 6px;
+  font-size: 12px;
+}
+
+.override-item:hover {
+  background: var(--bg-hover);
+}
+
+.override-site {
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.override-arrow {
+  color: var(--text-tertiary);
+  margin: 0 6px;
+}
+
+.override-account {
+  color: var(--accent);
+  font-weight: 500;
+}
+
+.override-right {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+/* ───── Status bar ───── */
+.status-bar {
+  margin-top: 8px;
+  padding: 6px 10px;
+  border-radius: 6px;
+  font-size: 12px;
+  text-align: center;
+  animation: fadeIn 0.2s;
+}
+
+.status-bar.success {
+  background: var(--status-success-bg);
+  color: var(--status-success-text);
+}
+
+.status-bar.error {
+  background: var(--status-error-bg);
+  color: var(--status-error-text);
+}
+
+.status-bar.info {
+  background: var(--status-info-bg);
+  color: var(--status-info-text);
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* ───── Scrollbar ───── */
+.account-list::-webkit-scrollbar,
+.override-list::-webkit-scrollbar {
+  width: 4px;
+}
+
+.account-list::-webkit-scrollbar-thumb,
+.override-list::-webkit-scrollbar-thumb {
+  background: var(--scrollbar-thumb);
+  border-radius: 2px;
+}
+
+.account-list::-webkit-scrollbar-track,
+.override-list::-webkit-scrollbar-track {
+  background: transparent;
+}

@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Icon Generator - G-Account Switcher</title>
+  <style>
+    body { font-family: sans-serif; padding: 20px; background: #f5f5f5; }
+    canvas { border: 1px solid #ccc; margin: 8px; background: #fff; }
+    .row { display: flex; align-items: end; gap: 16px; margin: 16px 0; }
+    button { padding: 10px 20px; font-size: 14px; cursor: pointer; }
+    a { display: inline-block; margin: 4px; }
+  </style>
+</head>
+<body>
+  <h1>G-Account Switcher — Icon Generator</h1>
+  <p>Click "Generate & Download" to create all icon sizes.</p>
+  <div class="row">
+    <div>
+      <p>16×16</p>
+      <canvas id="c16" width="16" height="16"></canvas>
+    </div>
+    <div>
+      <p>32×32</p>
+      <canvas id="c32" width="32" height="32"></canvas>
+    </div>
+    <div>
+      <p>48×48</p>
+      <canvas id="c48" width="48" height="48"></canvas>
+    </div>
+    <div>
+      <p>128×128</p>
+      <canvas id="c128" width="128" height="128"></canvas>
+    </div>
+  </div>
+  <button onclick="generateAll()">Generate & Download All</button>
+  <div id="downloads"></div>
+
+  <script>
+    function drawIcon(canvas) {
+      const size = canvas.width;
+      const ctx = canvas.getContext('2d');
+
+      // Background circle
+      ctx.beginPath();
+      ctx.arc(size/2, size/2, size/2, 0, Math.PI * 2);
+      ctx.fillStyle = '#1a73e8';
+      ctx.fill();
+
+      // "G" letter
+      ctx.fillStyle = '#ffffff';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.font = `bold ${size * 0.6}px "Segoe UI", Arial, sans-serif`;
+      ctx.fillText('G', size/2, size/2 + size * 0.03);
+
+      // Small arrow indicator at bottom-right
+      if (size >= 32) {
+        const arrowSize = size * 0.25;
+        const ax = size - arrowSize/2 - size * 0.05;
+        const ay = size - arrowSize/2 - size * 0.05;
+
+        ctx.beginPath();
+        ctx.arc(ax, ay, arrowSize/2 + 1, 0, Math.PI * 2);
+        ctx.fillStyle = '#ffffff';
+        ctx.fill();
+
+        ctx.beginPath();
+        ctx.arc(ax, ay, arrowSize/2, 0, Math.PI * 2);
+        ctx.fillStyle = '#34a853';
+        ctx.fill();
+
+        ctx.fillStyle = '#ffffff';
+        ctx.font = `bold ${arrowSize * 0.7}px Arial`;
+        ctx.fillText('↕', ax, ay + 1);
+      }
+    }
+
+    function generateAll() {
+      const sizes = [16, 32, 48, 128];
+      const container = document.getElementById('downloads');
+      container.innerHTML = '<p>Right-click each link and "Save Link As..." to save:</p>';
+
+      sizes.forEach(size => {
+        const canvas = document.getElementById('c' + size);
+        drawIcon(canvas);
+
+        const dataUrl = canvas.toDataURL('image/png');
+        const link = document.createElement('a');
+        link.href = dataUrl;
+        link.download = `icon${size}.png`;
+        link.textContent = `icon${size}.png`;
+        link.style.display = 'block';
+        container.appendChild(link);
+
+        // Auto-download
+        link.click();
+      });
+    }
+
+    // Draw preview on load
+    [16, 32, 48, 128].forEach(size => {
+      drawIcon(document.getElementById('c' + size));
+    });
+  </script>
+</body>
+</html>

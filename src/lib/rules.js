@@ -9,7 +9,7 @@
  *   501–1000: Per-site override rules (higher priority)
  *   1001–1010: Special-case redirect rules (gmail.com → mail.google.com)
  */
-import { GOOGLE_DOMAINS } from './constants.js';
+import { GOOGLE_DOMAINS, OVERRIDE_DISABLED } from './constants.js';
 
 const GLOBAL_RULE_BASE = 1;
 const OVERRIDE_RULE_BASE = 501;
@@ -127,7 +127,7 @@ function buildGmailRedirectRules(accountNum) {
  * Generate all declarativeNetRequest rules based on current settings.
  *
  * @param {number} defaultAccount - The global default account index
- * @param {Object} siteOverrides - Map of host → account index
+ * @param {Object} siteOverrides - Map of host → account index (or OVERRIDE_DISABLED)
  * @param {boolean} enabled - Whether the extension is enabled
  * @returns {Array} Array of declarativeNetRequest rule objects
  */
@@ -146,7 +146,15 @@ export function generateRules(defaultAccount, siteOverrides = {}, enabled = true
     }
 
     const hasOverride = domain.host in siteOverrides;
-    const accountNum = hasOverride ? siteOverrides[domain.host] : defaultAccount;
+    const overrideValue = hasOverride ? siteOverrides[domain.host] : undefined;
+
+    // If override is OVERRIDE_DISABLED, skip rule generation for this domain
+    // (no redirect rule = no account rewriting = Google's default behavior)
+    if (overrideValue === OVERRIDE_DISABLED) {
+      continue;
+    }
+
+    const accountNum = hasOverride ? overrideValue : defaultAccount;
 
     if (domain.type === 'path') {
       if (hasOverride) {
@@ -172,10 +180,12 @@ export function generateRules(defaultAccount, siteOverrides = {}, enabled = true
   }
 
   // Special-case: gmail.com → mail.google.com/mail/u/X/
-  const gmailAccount = ('mail.google.com' in siteOverrides)
-    ? siteOverrides['mail.google.com']
-    : defaultAccount;
-  rules.push(...buildGmailRedirectRules(gmailAccount));
+  const gmailOverride = siteOverrides['mail.google.com'];
+  // Skip gmail redirect rules if mail.google.com is disabled
+  if (gmailOverride !== OVERRIDE_DISABLED) {
+    const gmailAccount = gmailOverride !== undefined ? gmailOverride : defaultAccount;
+    rules.push(...buildGmailRedirectRules(gmailAccount));
+  }
 
   return rules;
 }

@@ -9,7 +9,7 @@
  * we handle this via chrome.tabs.onUpdated after page navigation begins.
  * This causes a brief redirect but only for bare URLs.
  */
-import { GOOGLE_DOMAINS, URL_PATTERNS } from './constants.js';
+import { GOOGLE_DOMAINS, URL_PATTERNS, OVERRIDE_DISABLED } from './constants.js';
 
 /**
  * Check if a URL already has an account identifier.
@@ -153,9 +153,15 @@ export async function handleProactiveRedirect(tabId, url, defaultAccount, siteOv
   }
 
   // Determine which account to use (site override or global default)
-  const accountNum = domain.host in siteOverrides
-    ? siteOverrides[domain.host]
-    : defaultAccount;
+  const hasOverride = domain.host in siteOverrides;
+  const overrideValue = hasOverride ? siteOverrides[domain.host] : undefined;
+
+  // If override is OVERRIDE_DISABLED, skip redirect entirely for this site
+  if (overrideValue === OVERRIDE_DISABLED) {
+    return false;
+  }
+
+  const accountNum = hasOverride ? overrideValue : defaultAccount;
 
   // Build redirect URL
   const newUrl = buildProactiveUrl(url, domain, accountNum);

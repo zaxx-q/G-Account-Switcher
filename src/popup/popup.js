@@ -5,7 +5,7 @@
  * mode switching, per-site overrides, account detection/management,
  * quick-switch for current site, and profile picture display.
  */
-import { GOOGLE_DOMAINS, STORAGE_KEYS, MAX_ACCOUNT_INDEX } from '../lib/constants.js';
+import { GOOGLE_DOMAINS, STORAGE_KEYS, MAX_ACCOUNT_INDEX, OVERRIDE_DISABLED } from '../lib/constants.js';
 import { getStorage, setStorage } from '../lib/storage.js';
 
 // ─── DOM References ───
@@ -179,6 +179,7 @@ async function selectAccount(index) {
   currentSettings.defaultAccount = index;
   await setStorage({ [STORAGE_KEYS.DEFAULT_ACCOUNT]: index });
   renderAccounts(currentSettings.accounts, index);
+  renderQuickSwitch(); // Update Quick Switch to reflect new default account
   showStatus(`Default account set to ${index}`, 'success');
 
   // Auto-refresh current tab if it's a Google/YouTube page and account changed
@@ -305,12 +306,19 @@ function renderOverrides(siteOverrides, accounts) {
     arrow.className = 'override-arrow';
     arrow.textContent = '→';
 
-    const accountLabel = accounts?.find((a) => a.index === accountIndex);
     const acct = document.createElement('span');
     acct.className = 'override-account';
-    acct.textContent = accountLabel
-      ? `${accountIndex} (${accountLabel.label || accountLabel.email || accountLabel.name})`
-      : `Account ${accountIndex}`;
+
+    if (accountIndex === OVERRIDE_DISABLED) {
+      acct.textContent = 'Disabled';
+      acct.style.opacity = '0.6';
+      acct.style.fontStyle = 'italic';
+    } else {
+      const accountLabel = accounts?.find((a) => a.index === accountIndex);
+      acct.textContent = accountLabel
+        ? `${accountIndex} (${accountLabel.label || accountLabel.email || accountLabel.name})`
+        : `Account ${accountIndex}`;
+    }
 
     const right = document.createElement('div');
     right.className = 'override-right';
@@ -486,13 +494,21 @@ function renderQuickSwitch() {
 
   // Build account options
   const currentOverride = currentSettings.siteOverrides?.[domain.host];
-  let options = `<option value="" ${currentOverride === undefined ? 'selected' : ''}>Use default (Account ${currentSettings.defaultAccount})</option>`;
 
+  let options = '';
+
+  // "Use default" option — shows current global default account number
+  options += `<option value="" ${currentOverride === undefined ? 'selected' : ''}>Use default (Account ${currentSettings.defaultAccount})</option>`;
+
+  // Per-account options
   (currentSettings.accounts || []).forEach((acc) => {
     const label = acc.label || acc.email || acc.name || `Account ${acc.index}`;
     const isSelected = currentOverride === acc.index;
     options += `<option value="${acc.index}" ${isSelected ? 'selected' : ''}>${acc.index}: ${label}</option>`;
   });
+
+  // "Disable redirection" option
+  options += `<option value="${OVERRIDE_DISABLED}" ${currentOverride === OVERRIDE_DISABLED ? 'selected' : ''}>🚫 Disable redirection</option>`;
 
   quickSwitchSelect.innerHTML = options;
 }
@@ -514,10 +530,17 @@ async function handleQuickSwitch(value) {
     showStatus(`Removed override for ${domain.host}`, 'info');
   } else {
     const index = parseInt(value, 10);
-    overrides[domain.host] = index;
-    const acc = currentSettings.accounts?.find((a) => a.index === index);
-    const label = acc?.label || acc?.email || `Account ${index}`;
-    showStatus(`${domain.host} → ${label}`, 'success');
+
+    if (index === OVERRIDE_DISABLED) {
+      // Set override to disabled sentinel
+      overrides[domain.host] = OVERRIDE_DISABLED;
+      showStatus(`Redirection disabled for ${domain.host}`, 'info');
+    } else {
+      overrides[domain.host] = index;
+      const acc = currentSettings.accounts?.find((a) => a.index === index);
+      const label = acc?.label || acc?.email || `Account ${index}`;
+      showStatus(`${domain.host} → ${label}`, 'success');
+    }
   }
 
   currentSettings.siteOverrides = overrides;

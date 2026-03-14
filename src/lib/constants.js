@@ -130,6 +130,13 @@ export const STORAGE_KEYS = {
 export const MAX_ACCOUNT_INDEX = 9;
 
 /**
+ * Sentinel value for per-site overrides meaning "disable redirection entirely for this site".
+ * When a site override is set to this value, no declarativeNetRequest rules are generated
+ * and proactive mode skips the redirect.
+ */
+export const OVERRIDE_DISABLED = -1;
+
+/**
  * URL for the Google ListAccounts endpoint.
  */
 export const LIST_ACCOUNTS_URL = 'https://accounts.google.com/ListAccounts?gpsia=1&source=ogb&mo=1';

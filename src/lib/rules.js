@@ -7,13 +7,16 @@
  * Rule ID scheme:
  *   1–500   : Global rules (default account)
  *   501–1000: Per-site override rules (higher priority)
+ *   1001–1010: Special-case redirect rules (gmail.com → mail.google.com)
  */
 import { GOOGLE_DOMAINS } from './constants.js';
 
 const GLOBAL_RULE_BASE = 1;
 const OVERRIDE_RULE_BASE = 501;
+const SPECIAL_RULE_BASE = 1001;
 const GLOBAL_PRIORITY = 1;
 const OVERRIDE_PRIORITY = 2;
+const SPECIAL_PRIORITY = 3;
 
 /**
  * Escape a string for use in a regex pattern.
@@ -56,9 +59,13 @@ function buildPathRule(id, priority, host, pathPrefix, accountNum) {
  * Example for www.google.com:
  *   regexFilter:       ^(https?://www\.google\.com/.*[?&]authuser=)\d+(.*)$
  *   regexSubstitution: \1{accountNum}\2
+ *
+ * For domains with pathPrefix (e.g. search.google.com/search-console):
+ *   regexFilter:       ^(https?://search\.google\.com/search-console.*[?&]authuser=)\d+(.*)$
  */
-function buildQueryRule(id, priority, host, accountNum) {
+function buildQueryRule(id, priority, host, accountNum, pathPrefix = '') {
   const escapedHost = escapeRegex(host);
+  const escapedPrefix = pathPrefix ? escapeRegex(pathPrefix) : '';
 
   return {
     id,
@@ -70,11 +77,50 @@ function buildQueryRule(id, priority, host, accountNum) {
       },
     },
     condition: {
-      regexFilter: `^(https?://${escapedHost}/.*[?&]authuser=)\\d+(.*)$`,
+      regexFilter: `^(https?://${escapedHost}${escapedPrefix}.*[?&]authuser=)\\d+(.*)$`,
       requestDomains: [host],
       resourceTypes: ['main_frame', 'sub_frame'],
     },
   };
+}
+
+/**
+ * Build special-case redirect rules for gmail.com → mail.google.com.
+ *
+ * Gmail has shortcut domains (gmail.com, www.gmail.com) that should
+ * redirect directly to the correct account path.
+ *
+ * @param {number} accountNum - Target account index
+ * @returns {Array} Array of redirect rules
+ */
+function buildGmailRedirectRules(accountNum) {
+  let ruleId = SPECIAL_RULE_BASE;
+  return [
+    {
+      id: ruleId++,
+      priority: SPECIAL_PRIORITY,
+      action: {
+        type: 'redirect',
+        redirect: { url: `https://mail.google.com/mail/u/${accountNum}/` },
+      },
+      condition: {
+        urlFilter: '||gmail.com^',
+        resourceTypes: ['main_frame'],
+      },
+    },
+    {
+      id: ruleId++,
+      priority: SPECIAL_PRIORITY,
+      action: {
+        type: 'redirect',
+        redirect: { url: `https://mail.google.com/mail/u/${accountNum}/` },
+      },
+      condition: {
+        urlFilter: '||www.gmail.com^',
+        resourceTypes: ['main_frame'],
+      },
+    },
+  ];
 }
 
 /**
@@ -115,15 +161,21 @@ export function generateRules(defaultAccount, siteOverrides = {}, enabled = true
     } else if (domain.type === 'query') {
       if (hasOverride) {
         rules.push(
-          buildQueryRule(overrideId++, OVERRIDE_PRIORITY, domain.host, accountNum)
+          buildQueryRule(overrideId++, OVERRIDE_PRIORITY, domain.host, accountNum, domain.pathPrefix || '')
         );
       } else {
         rules.push(
-          buildQueryRule(globalId++, GLOBAL_PRIORITY, domain.host, accountNum)
+          buildQueryRule(globalId++, GLOBAL_PRIORITY, domain.host, accountNum, domain.pathPrefix || '')
         );
       }
     }
   }
+
+  // Special-case: gmail.com → mail.google.com/mail/u/X/
+  const gmailAccount = ('mail.google.com' in siteOverrides)
+    ? siteOverrides['mail.google.com']
+    : defaultAccount;
+  rules.push(...buildGmailRedirectRules(gmailAccount));
 
   return rules;
 }

@@ -56,9 +56,19 @@ function findMatchingDomain(url) {
     }
   }
 
-  // Check query-based domains
-  const queryMatch = matches.find((d) => d.type === 'query');
-  if (queryMatch) return queryMatch;
+  // Check query-based domains (also supports pathPrefix matching)
+  const queryMatches = matches.filter((d) => d.type === 'query');
+  if (queryMatches.length > 0) {
+    // Prefer entries with pathPrefix that match the current path
+    const withPrefix = queryMatches
+      .filter((d) => d.pathPrefix && parsed.pathname.startsWith(d.pathPrefix))
+      .sort((a, b) => (b.pathPrefix || '').length - (a.pathPrefix || '').length);
+    if (withPrefix.length > 0) return withPrefix[0];
+
+    // Fall back to entries without pathPrefix
+    const withoutPrefix = queryMatches.find((d) => !d.pathPrefix);
+    if (withoutPrefix) return withoutPrefix;
+  }
 
   return null;
 }

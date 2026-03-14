@@ -2,7 +2,8 @@
  * Popup UI controller.
  *
  * Handles all user interactions in the popup: account selection,
- * mode switching, per-site overrides, and account detection/management.
+ * mode switching, per-site overrides, account detection/management,
+ * quick-switch for current site, and profile picture display.
  */
 import { GOOGLE_DOMAINS, STORAGE_KEYS, MAX_ACCOUNT_INDEX } from '../lib/constants.js';
 import { getStorage, setStorage } from '../lib/storage.js';
@@ -28,9 +29,13 @@ const overrideAccountInput = document.getElementById('overrideAccount');
 const saveOverrideBtn = document.getElementById('saveOverrideBtn');
 const cancelOverrideBtn = document.getElementById('cancelOverrideBtn');
 const statusBar = document.getElementById('statusBar');
+const quickSwitchSection = document.getElementById('quickSwitchSection');
+const quickSwitchSelect = document.getElementById('quickSwitchSelect');
+const currentSiteName = document.getElementById('currentSiteName');
 
 // ─── State ───
 let currentSettings = {};
+let currentTab = null;
 
 // ─── Status Messages ───
 let statusTimeout = null;
@@ -44,6 +49,16 @@ function showStatus(message, type = 'info') {
   statusTimeout = setTimeout(() => {
     statusBar.classList.add('hidden');
   }, 3000);
+}
+
+// ─── Utility: Generate initials from email ───
+function getInitials(email) {
+  if (!email) return '?';
+  const parts = email.split('@')[0].split('.');
+  if (parts.length >= 2) {
+    return (parts[0][0] + parts[1][0]).toUpperCase();
+  }
+  return email[0].toUpperCase();
 }
 
 // ─── Account List Rendering ───
@@ -71,23 +86,37 @@ function renderAccounts(accounts, defaultAccount) {
     radio.checked = account.index === defaultAccount;
     radio.addEventListener('change', () => selectAccount(account.index));
 
-    const indexBadge = document.createElement('span');
-    indexBadge.className = 'account-index';
-    indexBadge.textContent = account.index;
+    // Avatar (profile picture or initials)
+    const avatar = document.createElement('div');
+    avatar.className = 'account-avatar';
+
+    if (account.photo) {
+      const img = document.createElement('img');
+      img.src = account.photo;
+      img.alt = account.name || account.email || '';
+      img.referrerPolicy = 'no-referrer';
+      img.onerror = () => {
+        // Fallback to initials on load error
+        img.replaceWith(createInitialsEl(account));
+      };
+      avatar.appendChild(img);
+    } else {
+      avatar.appendChild(createInitialsEl(account));
+    }
 
     const info = document.createElement('div');
     info.className = 'account-info';
 
     const primary = document.createElement('span');
     primary.className = 'account-primary';
-    primary.textContent = account.label || account.email || `Account ${account.index}`;
+    primary.textContent = account.label || account.name || account.email || `Account ${account.index}`;
 
     const secondary = document.createElement('span');
     secondary.className = 'account-secondary';
     if (account.label && account.email) {
       secondary.textContent = account.email;
-    } else if (account.name) {
-      secondary.textContent = account.name;
+    } else if (account.email && account.name) {
+      secondary.textContent = account.email;
     } else {
       secondary.textContent = `Index: ${account.index}`;
     }
@@ -121,7 +150,7 @@ function renderAccounts(accounts, defaultAccount) {
     actions.appendChild(deleteBtn);
 
     item.appendChild(radio);
-    item.appendChild(indexBadge);
+    item.appendChild(avatar);
     item.appendChild(info);
     item.appendChild(actions);
 
@@ -135,11 +164,46 @@ function renderAccounts(accounts, defaultAccount) {
   });
 }
 
+/**
+ * Create an initials element for accounts without a profile picture.
+ */
+function createInitialsEl(account) {
+  const initialsEl = document.createElement('span');
+  initialsEl.className = 'account-initials';
+  initialsEl.textContent = getInitials(account.email || account.name);
+  return initialsEl;
+}
+
 async function selectAccount(index) {
+  const prevAccount = currentSettings.defaultAccount;
   currentSettings.defaultAccount = index;
   await setStorage({ [STORAGE_KEYS.DEFAULT_ACCOUNT]: index });
   renderAccounts(currentSettings.accounts, index);
   showStatus(`Default account set to ${index}`, 'success');
+
+  // Auto-refresh current tab if it's a Google/YouTube page and account changed
+  if (prevAccount !== index && currentTab?.id && currentTab?.url) {
+    refreshCurrentTab();
+  }
+}
+
+/**
+ * Refresh the current tab if it's a Google/YouTube page.
+ */
+function refreshCurrentTab() {
+  if (!currentTab?.url) return;
+  try {
+    const url = new URL(currentTab.url);
+    const isGoogle = url.hostname.includes('google.com') ||
+                     url.hostname.includes('youtube.com') ||
+                     url.hostname.includes('gmail.com');
+    if (isGoogle) {
+      showStatus('Refreshing page...', 'info');
+      setTimeout(() => {
+        chrome.runtime.sendMessage({ type: 'refreshTab', tabId: currentTab.id });
+      }, 300);
+    }
+  } catch { /* invalid URL — skip */ }
 }
 
 async function removeAccount(index) {
@@ -276,6 +340,7 @@ async function removeOverride(host) {
   await setStorage({ [STORAGE_KEYS.SITE_OVERRIDES]: overrides });
   renderOverrides(overrides, currentSettings.accounts);
   showStatus(`Override removed for ${host}`, 'info');
+  refreshCurrentTab();
 }
 
 // ─── Add Override ───
@@ -330,6 +395,137 @@ async function saveNewOverride() {
   addOverrideForm.classList.add('hidden');
   renderOverrides(overrides, currentSettings.accounts);
   showStatus(`Override added: ${host} → Account ${accountIndex}`, 'success');
+  refreshCurrentTab();
+}
+
+// ─── Quick Switch for Current Site ───
+
+/**
+ * Find the matching domain config for the current tab's URL.
+ */
+function findCurrentSiteDomain(url) {
+  if (!url) return null;
+  try {
+    const parsed = new URL(url);
+    const host = parsed.hostname;
+
+    // Handle gmail.com → mail.google.com mapping
+    if (host === 'gmail.com' || host.endsWith('.gmail.com')) {
+      return GOOGLE_DOMAINS.find((d) => d.host === 'mail.google.com');
+    }
+
+    // Find matching domains
+    const matches = GOOGLE_DOMAINS.filter(
+      (d) => d.host === host && d.type !== 'excluded'
+    );
+    if (matches.length === 0) return null;
+
+    // Prefer most specific pathPrefix match
+    const pathMatches = matches.filter((d) => d.type === 'path');
+    if (pathMatches.length > 0) {
+      const sorted = pathMatches.sort(
+        (a, b) => (b.pathPrefix || '').length - (a.pathPrefix || '').length
+      );
+      for (const entry of sorted) {
+        if (!entry.pathPrefix || parsed.pathname.startsWith(entry.pathPrefix)) {
+          return entry;
+        }
+      }
+    }
+
+    // Query-based match
+    const queryMatches = matches.filter((d) => d.type === 'query');
+    if (queryMatches.length > 0) {
+      const withPrefix = queryMatches
+        .filter((d) => d.pathPrefix && parsed.pathname.startsWith(d.pathPrefix))
+        .sort((a, b) => (b.pathPrefix || '').length - (a.pathPrefix || '').length);
+      if (withPrefix.length > 0) return withPrefix[0];
+      return queryMatches.find((d) => !d.pathPrefix) || queryMatches[0];
+    }
+
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Render the Quick Switch section based on current tab.
+ */
+function renderQuickSwitch() {
+  if (!currentTab?.url) {
+    quickSwitchSection.style.display = 'none';
+    return;
+  }
+
+  try {
+    const urlObj = new URL(currentTab.url);
+    if (!urlObj.protocol.startsWith('http')) {
+      quickSwitchSection.style.display = 'none';
+      return;
+    }
+  } catch {
+    quickSwitchSection.style.display = 'none';
+    return;
+  }
+
+  const domain = findCurrentSiteDomain(currentTab.url);
+  if (!domain) {
+    quickSwitchSection.style.display = 'none';
+    return;
+  }
+
+  // Show the quick switch section
+  quickSwitchSection.style.display = '';
+
+  // Display site name
+  const siteLabel = domain.pathPrefix
+    ? `${domain.host}${domain.pathPrefix}`
+    : domain.host;
+  currentSiteName.textContent = siteLabel;
+
+  // Build account options
+  const currentOverride = currentSettings.siteOverrides?.[domain.host];
+  let options = `<option value="" ${currentOverride === undefined ? 'selected' : ''}>Use default (Account ${currentSettings.defaultAccount})</option>`;
+
+  (currentSettings.accounts || []).forEach((acc) => {
+    const label = acc.label || acc.email || acc.name || `Account ${acc.index}`;
+    const isSelected = currentOverride === acc.index;
+    options += `<option value="${acc.index}" ${isSelected ? 'selected' : ''}>${acc.index}: ${label}</option>`;
+  });
+
+  quickSwitchSelect.innerHTML = options;
+}
+
+/**
+ * Handle quick switch account change for current site.
+ */
+async function handleQuickSwitch(value) {
+  if (!currentTab?.url) return;
+
+  const domain = findCurrentSiteDomain(currentTab.url);
+  if (!domain) return;
+
+  const overrides = { ...(currentSettings.siteOverrides || {}) };
+
+  if (value === '') {
+    // Remove override — use default
+    delete overrides[domain.host];
+    showStatus(`Removed override for ${domain.host}`, 'info');
+  } else {
+    const index = parseInt(value, 10);
+    overrides[domain.host] = index;
+    const acc = currentSettings.accounts?.find((a) => a.index === index);
+    const label = acc?.label || acc?.email || `Account ${index}`;
+    showStatus(`${domain.host} → ${label}`, 'success');
+  }
+
+  currentSettings.siteOverrides = overrides;
+  await setStorage({ [STORAGE_KEYS.SITE_OVERRIDES]: overrides });
+  renderOverrides(overrides, currentSettings.accounts);
+
+  // Auto-refresh current tab
+  refreshCurrentTab();
 }
 
 // ─── Account Detection ───
@@ -344,6 +540,7 @@ async function handleDetect() {
     if (response?.success && response.accounts) {
       currentSettings.accounts = response.accounts;
       renderAccounts(response.accounts, currentSettings.defaultAccount);
+      renderQuickSwitch(); // Re-render with new accounts
       showStatus(`Found ${response.accounts.length} account(s)`, 'success');
     } else {
       showStatus('Could not detect accounts. Are you logged in to Google?', 'error');
@@ -379,19 +576,28 @@ addOverrideBtn.addEventListener('click', showAddOverrideForm);
 saveOverrideBtn.addEventListener('click', saveNewOverride);
 cancelOverrideBtn.addEventListener('click', () => addOverrideForm.classList.add('hidden'));
 
+quickSwitchSelect.addEventListener('change', (e) => {
+  handleQuickSwitch(e.target.value);
+});
+
 // ─── Initialize ───
 
 async function initPopup() {
   try {
-    const settings = await getStorage([
-      STORAGE_KEYS.ENABLED,
-      STORAGE_KEYS.MODE,
-      STORAGE_KEYS.DEFAULT_ACCOUNT,
-      STORAGE_KEYS.ACCOUNTS,
-      STORAGE_KEYS.SITE_OVERRIDES,
+    // Load settings and current tab in parallel
+    const [settings, tabs] = await Promise.all([
+      getStorage([
+        STORAGE_KEYS.ENABLED,
+        STORAGE_KEYS.MODE,
+        STORAGE_KEYS.DEFAULT_ACCOUNT,
+        STORAGE_KEYS.ACCOUNTS,
+        STORAGE_KEYS.SITE_OVERRIDES,
+      ]),
+      chrome.tabs.query({ active: true, currentWindow: true }),
     ]);
 
     currentSettings = settings;
+    currentTab = tabs[0] || null;
 
     // Set UI state
     enableToggle.checked = settings.enabled !== false;
@@ -400,6 +606,7 @@ async function initPopup() {
     // Render lists
     renderAccounts(settings.accounts || [], settings.defaultAccount || 0);
     renderOverrides(settings.siteOverrides || {}, settings.accounts || []);
+    renderQuickSwitch();
   } catch (error) {
     console.error('[G-Account Switcher] Popup init error:', error);
     showStatus('Failed to load settings', 'error');

@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=360">
   <title>G-Account Switcher</title>
   <link rel="stylesheet" href="popup.css">
 </head>
@@ -12,90 +12,100 @@
     <header class="header">
       <h1 class="title">G-Account Switcher</h1>
       <div class="toggle-wrap">
-        <input type="checkbox" id="enableToggle" checked>
-        <label for="enableToggle" class="toggle-label"></label>
+        <label class="toggle" for="enableToggle">
+          <input type="checkbox" id="enableToggle" checked>
+          <span class="toggle-slider"></span>
+        </label>
       </div>
     </header>
 
-    <!-- Mode selector -->
+    <!-- Mode -->
     <div class="section mode-section">
-      <label for="modeSelect" class="section-label">Mode</label>
+      <label for="modeSelect" class="label">Mode</label>
       <select id="modeSelect" class="select">
-        <option value="proactive">Proactive (force account on all URLs)</option>
-        <option value="passive">Passive (rewrite only existing /u/ &amp; authuser=)</option>
+        <option value="proactive">Proactive (redirect bare URLs)</option>
+        <option value="passive">Passive (rewrite only)</option>
       </select>
     </div>
 
-    <!-- Default account -->
+    <!-- Quick Switch for current site -->
+    <div class="section" id="quickSwitchSection" style="display:none">
+      <div class="section-header">
+        <span class="section-title">
+          <span class="site-icon">🌐</span>
+          <span id="currentSiteName">Current Site</span>
+        </span>
+      </div>
+      <select id="quickSwitchSelect" class="select">
+        <option value="">No override</option>
+      </select>
+    </div>
+
+    <!-- Accounts -->
     <div class="section">
       <div class="section-header">
-        <span class="section-label">Default Account</span>
-        <button id="detectBtn" class="btn btn-sm btn-detect" title="Detect logged-in accounts">
-          🔍 Detect
-        </button>
+        <span class="section-title">Accounts</span>
+        <div class="section-actions">
+          <button class="btn btn-sm" id="detectBtn" title="Detect accounts">🔍 Detect</button>
+          <button class="btn btn-sm" id="addAccountBtn" title="Add manually">+ Add</button>
+        </div>
       </div>
       <div id="accountList" class="account-list">
         <!-- Populated by JS -->
         <div class="empty-state" id="emptyState">
-          <p>No accounts configured.</p>
-          <p class="hint">Click "Detect" to auto-detect or add manually below.</p>
+          <span>No accounts yet. Click <b>Detect</b> to find them.</span>
         </div>
       </div>
-      <div class="add-account">
-        <button id="addAccountBtn" class="btn btn-sm btn-add">+ Add Account</button>
-      </div>
     </div>
 
-    <!-- Add account form (hidden by default) -->
+    <!-- Add Account Form (hidden) -->
     <div id="addAccountForm" class="section add-form hidden">
       <div class="form-row">
-        <label for="newIndex" class="form-label">Index</label>
-        <input type="number" id="newIndex" class="input input-sm" min="0" max="9" value="0">
+        <label for="newIndex" class="label">Index</label>
+        <input type="number" id="newIndex" class="input" min="0" max="9" value="0">
       </div>
       <div class="form-row">
-        <label for="newEmail" class="form-label">Email</label>
-        <input type="text" id="newEmail" class="input" placeholder="user@gmail.com">
+        <label for="newEmail" class="label">Email</label>
+        <input type="email" id="newEmail" class="input" placeholder="user@gmail.com">
       </div>
       <div class="form-row">
-        <label for="newLabel" class="form-label">Label</label>
-        <input type="text" id="newLabel" class="input" placeholder="Work, Personal, etc.">
+        <label for="newLabel" class="label">Label</label>
+        <input type="text" id="newLabel" class="input" placeholder="Work, Personal...">
       </div>
       <div class="form-actions">
-        <button id="saveAccountBtn" class="btn btn-primary btn-sm">Save</button>
-        <button id="cancelAccountBtn" class="btn btn-sm">Cancel</button>
+        <button class="btn btn-primary" id="saveAccountBtn">Save</button>
+        <button class="btn" id="cancelAccountBtn">Cancel</button>
       </div>
     </div>
 
-    <!-- Per-site overrides -->
+    <!-- Site Overrides -->
     <div class="section">
       <div class="section-header">
-        <span class="section-label">Per-Site Overrides</span>
-        <button id="addOverrideBtn" class="btn btn-sm btn-add">+ Add</button>
+        <span class="section-title">Site Overrides</span>
+        <button class="btn btn-sm" id="addOverrideBtn" title="Add override">+ Add</button>
       </div>
-      <div id="overrideList" class="override-list">
-        <!-- Populated by JS -->
-      </div>
+      <div id="overrideList" class="override-list"></div>
     </div>
 
-    <!-- Add override form (hidden by default) -->
+    <!-- Add Override Form (hidden) -->
     <div id="addOverrideForm" class="section add-form hidden">
       <div class="form-row">
-        <label for="overrideSite" class="form-label">Site</label>
+        <label for="overrideSite" class="label">Site</label>
         <select id="overrideSite" class="select">
-          <!-- Populated by JS with available Google domains -->
+          <!-- Populated by JS -->
         </select>
       </div>
       <div class="form-row">
-        <label for="overrideAccount" class="form-label">Account</label>
-        <input type="number" id="overrideAccount" class="input input-sm" min="0" max="9" value="0">
+        <label for="overrideAccount" class="label">Account #</label>
+        <input type="number" id="overrideAccount" class="input" min="0" max="9" value="0">
       </div>
       <div class="form-actions">
-        <button id="saveOverrideBtn" class="btn btn-primary btn-sm">Save</button>
-        <button id="cancelOverrideBtn" class="btn btn-sm">Cancel</button>
+        <button class="btn btn-primary" id="saveOverrideBtn">Save</button>
+        <button class="btn" id="cancelOverrideBtn">Cancel</button>
       </div>
     </div>
 
-    <!-- Status bar -->
+    <!-- Status Bar -->
     <div id="statusBar" class="status-bar hidden"></div>
   </div>
 

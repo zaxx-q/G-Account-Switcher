@@ -20,26 +20,36 @@
 // e.g., mail.google.com/mail/u/0/  → pathPrefix = '/mail'
 //       docs.google.com/document/u/0/ → pathPrefix = '/document'
 export const GOOGLE_DOMAINS = [
-  // Path-based domains (/u/X/ in path)
+  // ── Path-based domains (/u/X/ in path) ──
+
+  // Gmail & Workspace
   { host: 'mail.google.com',           type: 'path', pathPrefix: '/mail' },
   { host: 'drive.google.com',          type: 'path', pathPrefix: '/drive' },
   { host: 'calendar.google.com',       type: 'path', pathPrefix: '/calendar' },
   { host: 'contacts.google.com',       type: 'path', pathPrefix: '' },
   { host: 'keep.google.com',           type: 'path', pathPrefix: '' },
   { host: 'chat.google.com',           type: 'path', pathPrefix: '' },
+  { host: 'tasks.google.com',          type: 'path', pathPrefix: '' },
   { host: 'photos.google.com',         type: 'path', pathPrefix: '' },
-  { host: 'myaccount.google.com',      type: 'path', pathPrefix: '' },
-  { host: 'notifications.google.com',  type: 'path', pathPrefix: '' },
-  { host: 'meet.google.com',           type: 'path', pathPrefix: '' },
   { host: 'groups.google.com',         type: 'path', pathPrefix: '' },
-  { host: 'admin.google.com',          type: 'path', pathPrefix: '' },
-  { host: 'analytics.google.com',      type: 'path', pathPrefix: '' },
-  { host: 'console.cloud.google.com',  type: 'path', pathPrefix: '' },
-  { host: 'play.google.com',           type: 'path', pathPrefix: '/store' },
 
-  // These have /u/X/ directly after the host
+  // Admin & Account
+  { host: 'myaccount.google.com',      type: 'path', pathPrefix: '' },
+  { host: 'admin.google.com',          type: 'path', pathPrefix: '' },
+  { host: 'notifications.google.com',  type: 'path', pathPrefix: '' },
+
+  // Communication
+  { host: 'meet.google.com',           type: 'path', pathPrefix: '' },
+
+  // AI / ML
   { host: 'aistudio.google.com',       type: 'path', pathPrefix: '' },
   { host: 'gemini.google.com',         type: 'path', pathPrefix: '' },
+
+  // Developer & Cloud
+  { host: 'console.cloud.google.com',  type: 'path', pathPrefix: '' },
+
+  // Play Store
+  { host: 'play.google.com',           type: 'path', pathPrefix: '/store' },
 
   // Google Docs suite — /u/X/ comes after the document type
   { host: 'docs.google.com',           type: 'path', pathPrefix: '/document' },
@@ -49,17 +59,38 @@ export const GOOGLE_DOMAINS = [
   { host: 'docs.google.com',           type: 'path', pathPrefix: '/drawings' },
   { host: 'docs.google.com',           type: 'path', pathPrefix: '' },
 
-  // NotebookLM — query-based
-  { host: 'notebooklm.google.com',     type: 'query' },
+  // ── Query-based domains (authuser=X in query string) ──
 
-  // Query-based domains (authuser=X in query string)
+  // Search & Maps
   { host: 'www.google.com',            type: 'query' },  // Search, Maps, etc.
+
+  // YouTube
   { host: 'www.youtube.com',           type: 'query' },
   { host: 'studio.youtube.com',        type: 'query' },
-  { host: 'music.youtube.com',         type: 'excluded' },  // Doesn't support authuser — uses cookie-based session
 
-  // Excluded — never rewrite
-  { host: 'accounts.google.com',       type: 'excluded' },
+  // NotebookLM
+  { host: 'notebooklm.google.com',     type: 'query' },
+
+  // Analytics & Marketing
+  { host: 'analytics.google.com',      type: 'query' },
+  { host: 'tagmanager.google.com',     type: 'query' },
+  { host: 'lookerstudio.google.com',   type: 'query' },
+  { host: 'search.google.com',         type: 'query', pathPrefix: '/search-console' },
+
+  // Ads & Monetization
+  { host: 'ads.google.com',            type: 'query' },
+  { host: 'adsense.google.com',        type: 'query' },
+  { host: 'admob.google.com',          type: 'query' },
+
+  // Developer
+  { host: 'console.firebase.google.com', type: 'query' },
+
+  // Other
+  { host: 'translate.google.com',      type: 'query' },
+
+  // ── Excluded — never rewrite ──
+  { host: 'music.youtube.com',         type: 'excluded' },  // Cookie-based session, doesn't support authuser
+  { host: 'accounts.google.com',       type: 'excluded' },  // Login flows — must not interfere
 ];
 
 /**

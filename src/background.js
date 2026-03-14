@@ -6,6 +6,7 @@
  * 2. On storage change: regenerate rules and update badge
  * 3. In proactive mode: listen to tabs.onUpdated for bare Google URLs
  * 4. Handle messages from popup (detect accounts, etc.)
+ * 5. Cookie-based automatic account list refresh
  */
 import { STORAGE_KEYS } from './lib/constants.js';
 import { getAllSettings } from './lib/storage.js';
@@ -24,6 +25,31 @@ let currentSettings = null;
 const redirectedTabs = new Map();
 const REDIRECT_COOLDOWN_MS = 10_000; // 10 seconds
 
+// ========== COOKIE-BASED ACCOUNT CHANGE DETECTION ==========
+
+// Cookie names that indicate Google account sign-in/sign-out events
+const GOOGLE_AUTH_COOKIES = ['SID', 'SSID', 'HSID', 'LSID', 'ACCOUNT_CHOOSER'];
+
+// Debounce timer — Google sets multiple cookies at once during sign-in/out
+let cookieRefreshTimeout = null;
+
+chrome.cookies.onChanged.addListener(({ cookie, removed }) => {
+  // Only care about Google auth cookies
+  if (!cookie.domain.includes('google.com')) return;
+  if (!GOOGLE_AUTH_COOKIES.includes(cookie.name)) return;
+
+  // Debounce — wait for all cookie changes to settle
+  if (cookieRefreshTimeout) clearTimeout(cookieRefreshTimeout);
+  cookieRefreshTimeout = setTimeout(async () => {
+    cookieRefreshTimeout = null;
+    console.log('[G-Account Switcher] Refreshing accounts due to auth cookie change');
+    await detectAndMergeAccounts();
+    // Badge updates via storage.onChanged listener
+  }, 2000);
+});
+
+// ========== INITIALIZATION ==========
+
 /**
  * Load settings and apply rules + badge.
  */
@@ -41,7 +67,7 @@ async function initialize() {
     // Update badge
     updateBadge(currentSettings);
 
-    console.log('[G-Account Switcher] Initialized', currentSettings);
+    console.log('[G-Account Switcher] Initialized');
   } catch (error) {
     console.error('[G-Account Switcher] Init error:', error);
   }
@@ -169,13 +195,23 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       .catch((error) => sendResponse({ error: error.message }));
     return true;
   }
+
+  if (message.type === 'refreshTab') {
+    if (message.tabId) {
+      chrome.tabs.reload(message.tabId).catch(() => {});
+    }
+    sendResponse({ success: true });
+    return false;
+  }
 });
 
 /**
- * On install or update: initialize.
+ * On install or update: detect accounts and initialize.
  */
-chrome.runtime.onInstalled.addListener(() => {
-  initialize();
+chrome.runtime.onInstalled.addListener(async () => {
+  // Detect accounts on install/update (fresh detection)
+  await detectAndMergeAccounts();
+  await initialize();
 });
 
 /**

@@ -582,6 +582,9 @@ enableToggle.addEventListener('change', async () => {
   currentSettings.enabled = enableToggle.checked;
   await setStorage({ [STORAGE_KEYS.ENABLED]: enableToggle.checked });
   showStatus(enableToggle.checked ? 'Enabled' : 'Disabled', 'info');
+
+  // Auto-refresh current Google tab so rules take effect immediately
+  refreshCurrentTab();
 });
 
 modeSelect.addEventListener('change', async () => {

@@ -48,8 +48,8 @@ export const GOOGLE_DOMAINS = [
   // Developer & Cloud
   { host: 'console.cloud.google.com',  type: 'path', pathPrefix: '' },
 
-  // Play Store
-  { host: 'play.google.com',           type: 'path', pathPrefix: '/store' },
+  // Play Store (uses ?authuser=X, strips it after load like YouTube)
+  { host: 'play.google.com',           type: 'query' },
 
   // Google Docs suite — /u/X/ comes after the document type
   { host: 'docs.google.com',           type: 'path', pathPrefix: '/document' },

@@ -103,6 +103,12 @@ chrome.storage.onChanged.addListener(async (changes, areaName) => {
   const hasRelevantChange = relevantKeys.some((key) => key in changes);
   if (!hasRelevantChange && !(STORAGE_KEYS.ACCOUNTS in changes)) return;
 
+  // Detect enabled transition (false → true) BEFORE updating currentSettings
+  const wasJustEnabled =
+    STORAGE_KEYS.ENABLED in changes &&
+    changes[STORAGE_KEYS.ENABLED].newValue === true &&
+    changes[STORAGE_KEYS.ENABLED].oldValue === false;
+
   // Reload all settings
   currentSettings = await getAllSettings();
 
@@ -115,14 +121,44 @@ chrome.storage.onChanged.addListener(async (changes, areaName) => {
     );
     updateBadge(currentSettings);
   }
+
+  // When re-enabled in proactive mode, redirect the active tab immediately
+  // so the user doesn't need to open a new tab for rules to take effect.
+  if (wasJustEnabled && currentSettings.mode === 'proactive') {
+    try {
+      const [activeTab] = await chrome.tabs.query({ active: true, currentWindow: true });
+      if (activeTab?.id && activeTab?.url) {
+        const redirected = await handleProactiveRedirect(
+          activeTab.id,
+          activeTab.url,
+          currentSettings.defaultAccount,
+          currentSettings.siteOverrides
+        );
+        if (redirected) {
+          try {
+            const host = new URL(activeTab.url).hostname;
+            redirectedTabs.set(activeTab.id, {
+              host,
+              expiry: Date.now() + REDIRECT_COOLDOWN_MS,
+            });
+          } catch { /* best-effort */ }
+          setTimeout(() => redirectedTabs.delete(activeTab.id), REDIRECT_COOLDOWN_MS);
+        }
+      }
+    } catch { /* best-effort — popup already refreshes the tab */ }
+  }
 });
 
 /**
  * Proactive mode: listen to tab navigations.
  */
 chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
-  // Only act on URL changes (not title changes, loading states, etc.)
-  if (!changeInfo.url) return;
+  // Determine the URL to act on:
+  // - changeInfo.url is set on new navigations (link click, address bar, etc.)
+  // - On F5/reload, changeInfo has { status: 'loading' } but NO url property;
+  //   in that case, use the tab's existing url so proactive mode still fires.
+  const url = changeInfo.url || (changeInfo.status === 'loading' ? tab.url : null);
+  if (!url) return;
 
   // Wait for settings to be loaded
   if (!currentSettings) return;
@@ -137,7 +173,7 @@ chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
   if (redirectedTabs.has(tabId)) {
     const entry = redirectedTabs.get(tabId);
     try {
-      const currentHost = new URL(changeInfo.url).hostname;
+      const currentHost = new URL(url).hostname;
       if (currentHost === entry.host && Date.now() < entry.expiry) {
         // Same domain, still in cooldown — skip silently
         return;
@@ -149,7 +185,7 @@ chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
 
   const redirected = await handleProactiveRedirect(
     tabId,
-    changeInfo.url,
+    url,
     currentSettings.defaultAccount,
     currentSettings.siteOverrides
   );
@@ -158,7 +194,7 @@ chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
     // Record the host and cooldown expiry so we can suppress loop-causing
     // re-fires from the same domain.
     try {
-      const host = new URL(changeInfo.url).hostname;
+      const host = new URL(url).hostname;
       redirectedTabs.set(tabId, {
         host,
         expiry: Date.now() + REDIRECT_COOLDOWN_MS,

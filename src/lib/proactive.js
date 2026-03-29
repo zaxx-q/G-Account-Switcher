@@ -165,10 +165,8 @@ export async function handleProactiveRedirect(tabId, url, defaultAccount, siteOv
     return false;
   }
 
-  // Skip if URL already has account info (and passively learn from it)
-  if (checkAndLogAccountParam(url, host)) {
-    return false;
-  }
+  // Check if URL already has an account identifier (and record its value)
+  const hasExistingAccount = checkAndLogAccountParam(url, host);
 
   // Find matching domain
   const domain = findMatchingDomain(url);
@@ -187,14 +185,50 @@ export async function handleProactiveRedirect(tabId, url, defaultAccount, siteOv
 
   const accountNum = hasOverride ? overrideValue : defaultAccount;
 
-  // If this domain is already known to be synced to the target account, skip the redirect!
-  // This seamlessly prevents double-loads on sites like YouTube that auto-strip parameters
-  // after reading them into their internal session cookies.
+  // URL already has an account identifier — check if it's the correct one
+  if (hasExistingAccount) {
+    const currentAccount = domainSyncedStates.get(host);
+    if (currentAccount === accountNum) {
+      return false; // Already on the correct account
+    }
+
+    // Wrong account in URL — rewrite it to the target account
+    try {
+      const parsed = new URL(url);
+      let newUrl = null;
+
+      if (domain.type === 'path') {
+        const prefix = domain.pathPrefix || '';
+        const afterPrefix = parsed.pathname.substring(prefix.length);
+        const newAfter = afterPrefix.replace(/^\/u\/\d+/, `/u/${accountNum}`);
+        if (newAfter !== afterPrefix) {
+          parsed.pathname = prefix + newAfter;
+          newUrl = parsed.toString();
+        }
+      } else if (domain.type === 'query') {
+        if (parsed.searchParams.get('authuser') !== accountNum.toString()) {
+          parsed.searchParams.set('authuser', accountNum.toString());
+          newUrl = parsed.toString();
+        }
+      }
+
+      if (newUrl && newUrl !== url) {
+        domainSyncedStates.set(domain.host, accountNum);
+        await chrome.tabs.update(tabId, { url: newUrl });
+        console.log(`[G-Account Switcher] Proactive (account mismatch): ${url} → ${newUrl}`);
+        return true;
+      }
+    } catch { /* invalid URL — skip */ }
+    return false;
+  }
+
+  // URL has no account identifier — check synced state cache to avoid double-loads
+  // (e.g., YouTube strips authuser= after reading it into session cookies)
   if (domainSyncedStates.get(domain.host) === accountNum) {
     return false;
   }
 
-  // Build redirect URL
+  // Build redirect URL (adds /u/X/ or authuser=X to bare URL)
   const newUrl = buildProactiveUrl(url, domain, accountNum);
   if (!newUrl || newUrl === url) {
     return false;
@@ -202,7 +236,7 @@ export async function handleProactiveRedirect(tabId, url, defaultAccount, siteOv
 
   // Perform redirect
   try {
-    domainSyncedStates.set(domain.host, accountNum); // Log our impending force-sync
+    domainSyncedStates.set(domain.host, accountNum);
     await chrome.tabs.update(tabId, { url: newUrl });
     console.log(`[G-Account Switcher] Proactive: ${url} → ${newUrl}`);
     return true;

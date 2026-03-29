@@ -543,6 +543,7 @@ async function handleQuickSwitch(value) {
   if (!domain) return;
 
   const overrides = { ...(currentSettings.siteOverrides || {}) };
+  let shouldRefresh = true;
 
   if (value === '') {
     // Remove override — use default
@@ -552,9 +553,10 @@ async function handleQuickSwitch(value) {
     const index = parseInt(value, 10);
 
     if (index === OVERRIDE_DISABLED) {
-      // Set override to disabled sentinel
+      // Set override to disabled sentinel — don't refresh/change the URL
       overrides[domain.host] = OVERRIDE_DISABLED;
       showStatus(`Redirection disabled for ${domain.host}`, 'info');
+      shouldRefresh = false;
     } else {
       overrides[domain.host] = index;
       const acc = currentSettings.accounts?.find((a) => a.index === index);
@@ -567,8 +569,10 @@ async function handleQuickSwitch(value) {
   await updateSettingsAndWait({ [STORAGE_KEYS.SITE_OVERRIDES]: overrides });
   renderOverrides(overrides, currentSettings.accounts);
 
-  // Auto-refresh current tab
-  refreshCurrentTabNow();
+  // Auto-refresh current tab (skip when disabling redirection)
+  if (shouldRefresh) {
+    refreshCurrentTabNow();
+  }
 }
 
 // ─── Account Detection ───
@@ -603,8 +607,8 @@ enableToggle.addEventListener('change', async () => {
   await updateSettingsAndWait({ [STORAGE_KEYS.ENABLED]: enableToggle.checked });
   showStatus(enableToggle.checked ? 'Enabled' : 'Disabled', 'info');
 
-  // Auto-refresh current Google tab so rules take effect immediately
-  if (currentTab?.id && currentTab?.url) {
+  // Only refresh when enabling — disabling should not reload/change the URL
+  if (enableToggle.checked && currentTab?.id && currentTab?.url) {
     refreshCurrentTabNow();
   }
 });

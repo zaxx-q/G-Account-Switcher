@@ -11,7 +11,7 @@
 import { STORAGE_KEYS } from './lib/constants.js';
 import { getAllSettings } from './lib/storage.js';
 import { applyRules } from './lib/rules.js';
-import { handleProactiveRedirect } from './lib/proactive.js';
+import { handleProactiveRedirect, applyForceSwitch } from './lib/proactive.js';
 import { detectAndMergeAccounts } from './lib/accounts.js';
 
 // Track current settings in memory for the tabs.onUpdated listener
@@ -120,6 +120,8 @@ chrome.storage.onChanged.addListener(async (changes, areaName) => {
       currentSettings.enabled
     );
     updateBadge(currentSettings);
+    // Broadcast that rules have updated so popup can refresh tabs safely
+    chrome.runtime.sendMessage({ type: 'rulesUpdated' }).catch(() => {});
   }
 
   // When re-enabled in proactive mode, redirect the active tab immediately
@@ -159,6 +161,19 @@ chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
   //   in that case, use the tab's existing url so proactive mode still fires.
   const url = changeInfo.url || (changeInfo.status === 'loading' ? tab.url : null);
   if (!url) return;
+
+  // TEST HOOK: Change default account via URL parameter for automation
+  if (url.includes('TEST_SWITCH_ACCOUNT=')) {
+    const match = url.match(/TEST_SWITCH_ACCOUNT=(\d+)/);
+    if (match) {
+      const newAcc = parseInt(match[1], 10);
+      if (currentSettings) {
+        currentSettings.defaultAccount = newAcc;
+      }
+      chrome.storage.sync.set({ defaultAccount: newAcc });
+      console.log(`[TEST HOOK] Switched account to ${newAcc}`);
+    }
+  }
 
   // Wait for settings to be loaded
   if (!currentSettings) return;
@@ -234,7 +249,18 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
   if (message.type === 'refreshTab') {
     if (message.tabId) {
-      chrome.tabs.reload(message.tabId).catch(() => {});
+      redirectedTabs.delete(message.tabId); // clear cooldown so proactive works
+      chrome.tabs.get(message.tabId).then(async (tab) => {
+        if (!tab.url) {
+          chrome.tabs.reload(message.tabId).catch(() => {});
+          return;
+        }
+        const settings = currentSettings || await getAllSettings();
+        const switched = await applyForceSwitch(message.tabId, tab.url, settings.defaultAccount, settings.siteOverrides || {});
+        if (!switched) {
+          chrome.tabs.reload(message.tabId).catch(() => {});
+        }
+      }).catch(() => {});
     }
     sendResponse({ success: true });
     return false;

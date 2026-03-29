@@ -179,3 +179,59 @@ export async function handleProactiveRedirect(tabId, url, defaultAccount, siteOv
     return false;
   }
 }
+
+/**
+ * Force switch the URL for a tab, modifying an existing account parameter if present.
+ * Used for manual user-initiated switches from the popup.
+ */
+export async function applyForceSwitch(tabId, url, targetAccount, siteOverrides) {
+  const domain = findMatchingDomain(url);
+  if (!domain) return false;
+
+  const hasOverride = domain.host in siteOverrides;
+  const overrideValue = hasOverride ? siteOverrides[domain.host] : undefined;
+  if (overrideValue === OVERRIDE_DISABLED) return false;
+
+  const accountNum = hasOverride ? overrideValue : targetAccount;
+
+  try {
+    const parsed = new URL(url);
+    let changed = false;
+
+    if (domain.type === 'path') {
+      const prefix = domain.pathPrefix || '';
+      let afterPrefix = parsed.pathname.substring(prefix.length);
+
+      if (/^\/u\/\d+/.test(afterPrefix)) {
+        const newAfter = afterPrefix.replace(/^\/u\/\d+/, `/u/${accountNum}`);
+        if (newAfter !== afterPrefix) {
+          parsed.pathname = prefix + newAfter;
+          changed = true;
+        }
+      } else {
+        // Fallback to building proactive url if missing
+        let newPath;
+        if (afterPrefix === '' || afterPrefix === '/') {
+          newPath = `${prefix}/u/${accountNum}/`;
+        } else {
+          newPath = `${prefix}/u/${accountNum}${afterPrefix}`;
+        }
+        parsed.pathname = newPath;
+        changed = true;
+      }
+    } else if (domain.type === 'query') {
+      if (parsed.searchParams.get('authuser') !== accountNum.toString()) {
+        parsed.searchParams.set('authuser', accountNum.toString());
+        changed = true;
+      }
+    }
+
+    if (changed) {
+      await chrome.tabs.update(tabId, { url: parsed.toString() });
+      console.log(`[G-Account Switcher] Force Switch: ${url} → ${parsed.toString()}`);
+      return true;
+    }
+  } catch { }
+
+  return false;
+}

@@ -177,21 +177,43 @@ function createInitialsEl(account) {
 async function selectAccount(index) {
   const prevAccount = currentSettings.defaultAccount;
   currentSettings.defaultAccount = index;
-  await setStorage({ [STORAGE_KEYS.DEFAULT_ACCOUNT]: index });
+  await updateSettingsAndWait({ [STORAGE_KEYS.DEFAULT_ACCOUNT]: index });
   renderAccounts(currentSettings.accounts, index);
   renderQuickSwitch(); // Update Quick Switch to reflect new default account
   showStatus(`Default account set to ${index}`, 'success');
 
   // Auto-refresh current tab if it's a Google/YouTube page and account changed
   if (prevAccount !== index && currentTab?.id && currentTab?.url) {
-    refreshCurrentTab();
+    refreshCurrentTabNow();
   }
 }
 
 /**
- * Refresh the current tab if it's a Google/YouTube page.
+ * Update settings and wait for background rules to be applied.
  */
-function refreshCurrentTab() {
+async function updateSettingsAndWait(settingsObj) {
+  const rulesPromise = new Promise(resolve => {
+    const listener = (msg) => {
+      if (msg.type === 'rulesUpdated') {
+        chrome.runtime.onMessage.removeListener(listener);
+        resolve();
+      }
+    };
+    chrome.runtime.onMessage.addListener(listener);
+    setTimeout(() => {
+      chrome.runtime.onMessage.removeListener(listener);
+      resolve();
+    }, 1000); // fallback timeout
+  });
+
+  await setStorage(settingsObj);
+  await rulesPromise;
+}
+
+/**
+ * Refresh the current tab immediately if it's a Google/YouTube page.
+ */
+function refreshCurrentTabNow() {
   if (!currentTab?.url) return;
   try {
     const url = new URL(currentTab.url);
@@ -200,9 +222,7 @@ function refreshCurrentTab() {
                      url.hostname.includes('gmail.com');
     if (isGoogle) {
       showStatus('Refreshing page...', 'info');
-      setTimeout(() => {
-        chrome.runtime.sendMessage({ type: 'refreshTab', tabId: currentTab.id });
-      }, 300);
+      chrome.runtime.sendMessage({ type: 'refreshTab', tabId: currentTab.id });
     }
   } catch { /* invalid URL — skip */ }
 }
@@ -216,7 +236,7 @@ async function removeAccount(index) {
   if (currentSettings.defaultAccount === index) {
     const newDefault = accounts.length > 0 ? accounts[0].index : 0;
     currentSettings.defaultAccount = newDefault;
-    await setStorage({ [STORAGE_KEYS.DEFAULT_ACCOUNT]: newDefault });
+    await updateSettingsAndWait({ [STORAGE_KEYS.DEFAULT_ACCOUNT]: newDefault });
   }
 
   renderAccounts(accounts, currentSettings.defaultAccount);
@@ -345,10 +365,10 @@ async function removeOverride(host) {
   const overrides = { ...currentSettings.siteOverrides };
   delete overrides[host];
   currentSettings.siteOverrides = overrides;
-  await setStorage({ [STORAGE_KEYS.SITE_OVERRIDES]: overrides });
+  await updateSettingsAndWait({ [STORAGE_KEYS.SITE_OVERRIDES]: overrides });
   renderOverrides(overrides, currentSettings.accounts);
   showStatus(`Override removed for ${host}`, 'info');
-  refreshCurrentTab();
+  refreshCurrentTabNow();
 }
 
 // ─── Add Override ───
@@ -398,12 +418,12 @@ async function saveNewOverride() {
 
   const overrides = { ...(currentSettings.siteOverrides || {}), [host]: accountIndex };
   currentSettings.siteOverrides = overrides;
-  await setStorage({ [STORAGE_KEYS.SITE_OVERRIDES]: overrides });
+  await updateSettingsAndWait({ [STORAGE_KEYS.SITE_OVERRIDES]: overrides });
 
   addOverrideForm.classList.add('hidden');
   renderOverrides(overrides, currentSettings.accounts);
   showStatus(`Override added: ${host} → Account ${accountIndex}`, 'success');
-  refreshCurrentTab();
+  refreshCurrentTabNow();
 }
 
 // ─── Quick Switch for Current Site ───
@@ -544,11 +564,11 @@ async function handleQuickSwitch(value) {
   }
 
   currentSettings.siteOverrides = overrides;
-  await setStorage({ [STORAGE_KEYS.SITE_OVERRIDES]: overrides });
+  await updateSettingsAndWait({ [STORAGE_KEYS.SITE_OVERRIDES]: overrides });
   renderOverrides(overrides, currentSettings.accounts);
 
   // Auto-refresh current tab
-  refreshCurrentTab();
+  refreshCurrentTabNow();
 }
 
 // ─── Account Detection ───
@@ -580,11 +600,13 @@ async function handleDetect() {
 
 enableToggle.addEventListener('change', async () => {
   currentSettings.enabled = enableToggle.checked;
-  await setStorage({ [STORAGE_KEYS.ENABLED]: enableToggle.checked });
+  await updateSettingsAndWait({ [STORAGE_KEYS.ENABLED]: enableToggle.checked });
   showStatus(enableToggle.checked ? 'Enabled' : 'Disabled', 'info');
 
   // Auto-refresh current Google tab so rules take effect immediately
-  refreshCurrentTab();
+  if (currentTab?.id && currentTab?.url) {
+    refreshCurrentTabNow();
+  }
 });
 
 modeSelect.addEventListener('change', async () => {

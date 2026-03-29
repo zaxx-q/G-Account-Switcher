@@ -86,7 +86,7 @@ export const GOOGLE_DOMAINS = [
   { host: 'console.firebase.google.com', type: 'query' },
 
   // Other
-  { host: 'translate.google.com',      type: 'query' },
+  { host: 'translate.google.com',      type: 'path', pathPrefix: '' },
 
   // ── Excluded — never rewrite ──
   { host: 'music.youtube.com',         type: 'excluded' },  // Cookie-based session, doesn't support authuser

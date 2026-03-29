@@ -11,19 +11,11 @@
 import { STORAGE_KEYS } from './lib/constants.js';
 import { getAllSettings } from './lib/storage.js';
 import { applyRules } from './lib/rules.js';
-import { handleProactiveRedirect, applyForceSwitch } from './lib/proactive.js';
+import { handleProactiveRedirect, applyForceSwitch, clearSyncedState } from './lib/proactive.js';
 import { detectAndMergeAccounts } from './lib/accounts.js';
 
 // Track current settings in memory for the tabs.onUpdated listener
 let currentSettings = null;
-// Track tabs we've already redirected to avoid loops.
-// Map<tabId, { host: string, expiry: number }>
-// Uses a domain-aware cooldown: skips repeated onUpdated events for the
-// same host within the cooldown window.  This prevents infinite loops on
-// domains like YouTube that process authuser=X, strip the param, and
-// refresh — which would otherwise look like a "bare" URL again.
-const redirectedTabs = new Map();
-const REDIRECT_COOLDOWN_MS = 10_000; // 10 seconds
 
 // ========== COOKIE-BASED ACCOUNT CHANGE DETECTION ==========
 
@@ -120,6 +112,8 @@ chrome.storage.onChanged.addListener(async (changes, areaName) => {
       currentSettings.enabled
     );
     updateBadge(currentSettings);
+    // Clear global state tracker so that new target accounts are instantly resynced
+    clearSyncedState();
     // Broadcast that rules have updated so popup can refresh tabs safely
     chrome.runtime.sendMessage({ type: 'rulesUpdated' }).catch(() => {});
   }
@@ -136,16 +130,6 @@ chrome.storage.onChanged.addListener(async (changes, areaName) => {
           currentSettings.defaultAccount,
           currentSettings.siteOverrides
         );
-        if (redirected) {
-          try {
-            const host = new URL(activeTab.url).hostname;
-            redirectedTabs.set(activeTab.id, {
-              host,
-              expiry: Date.now() + REDIRECT_COOLDOWN_MS,
-            });
-          } catch { /* best-effort */ }
-          setTimeout(() => redirectedTabs.delete(activeTab.id), REDIRECT_COOLDOWN_MS);
-        }
       }
     } catch { /* best-effort — popup already refreshes the tab */ }
   }
@@ -181,48 +165,12 @@ chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
   // Skip if disabled or not in proactive mode
   if (!currentSettings.enabled || currentSettings.mode !== 'proactive') return;
 
-  // Avoid redirect loops: if we recently redirected this tab for the same
-  // host, skip.  This handles domains like YouTube that process authuser,
-  // strip it from the URL, and refresh — causing a second onUpdated with
-  // a "bare" URL that would otherwise trigger another redirect.
-  if (redirectedTabs.has(tabId)) {
-    const entry = redirectedTabs.get(tabId);
-    try {
-      const currentHost = new URL(url).hostname;
-      if (currentHost === entry.host && Date.now() < entry.expiry) {
-        // Same domain, still in cooldown — skip silently
-        return;
-      }
-    } catch { /* invalid URL — fall through to normal handling */ }
-    // Different domain or cooldown expired — clear and proceed
-    redirectedTabs.delete(tabId);
-  }
-
-  const redirected = await handleProactiveRedirect(
+  await handleProactiveRedirect(
     tabId,
     url,
     currentSettings.defaultAccount,
     currentSettings.siteOverrides
   );
-
-  if (redirected) {
-    // Record the host and cooldown expiry so we can suppress loop-causing
-    // re-fires from the same domain.
-    try {
-      const host = new URL(url).hostname;
-      redirectedTabs.set(tabId, {
-        host,
-        expiry: Date.now() + REDIRECT_COOLDOWN_MS,
-      });
-    } catch { /* best-effort */ }
-    // Safety net: auto-clear after cooldown even if no new event arrives
-    setTimeout(() => redirectedTabs.delete(tabId), REDIRECT_COOLDOWN_MS);
-  }
-});
-
-// Clean up redirectedTabs when tabs are closed
-chrome.tabs.onRemoved.addListener((tabId) => {
-  redirectedTabs.delete(tabId);
 });
 
 /**
@@ -249,7 +197,6 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
   if (message.type === 'refreshTab') {
     if (message.tabId) {
-      redirectedTabs.delete(message.tabId); // clear cooldown so proactive works
       chrome.tabs.get(message.tabId).then(async (tab) => {
         if (!tab.url) {
           chrome.tabs.reload(message.tabId).catch(() => {});

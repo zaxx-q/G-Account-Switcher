@@ -11,13 +11,30 @@
  */
 import { GOOGLE_DOMAINS, URL_PATTERNS, OVERRIDE_DISABLED } from './constants.js';
 
+export const domainSyncedStates = new Map();
+
 /**
- * Check if a URL already has an account identifier.
+ * Check if a URL already has an account identifier and record its state if so.
  * @param {string} url
+ * @param {string} host
  * @returns {boolean}
  */
-function hasAccountParam(url) {
-  return URL_PATTERNS.PATH_ACCOUNT.test(url) || URL_PATTERNS.QUERY_ACCOUNT.test(url);
+function checkAndLogAccountParam(url, host) {
+  let matched = false;
+  
+  const pathMatch = url.match(URL_PATTERNS.PATH_ACCOUNT);
+  if (pathMatch) {
+    domainSyncedStates.set(host, parseInt(pathMatch[1], 10));
+    matched = true;
+  }
+  
+  const queryMatch = url.match(URL_PATTERNS.QUERY_ACCOUNT);
+  if (queryMatch) {
+    domainSyncedStates.set(host, parseInt(queryMatch[1], 10));
+    matched = true;
+  }
+  
+  return matched;
 }
 
 /**
@@ -141,8 +158,15 @@ export function buildProactiveUrl(url, domain, accountNum) {
  * @returns {Promise<boolean>} True if a redirect was performed
  */
 export async function handleProactiveRedirect(tabId, url, defaultAccount, siteOverrides) {
-  // Skip if URL already has account info
-  if (hasAccountParam(url)) {
+  let host;
+  try {
+    host = new URL(url).hostname;
+  } catch {
+    return false;
+  }
+
+  // Skip if URL already has account info (and passively learn from it)
+  if (checkAndLogAccountParam(url, host)) {
     return false;
   }
 
@@ -163,6 +187,13 @@ export async function handleProactiveRedirect(tabId, url, defaultAccount, siteOv
 
   const accountNum = hasOverride ? overrideValue : defaultAccount;
 
+  // If this domain is already known to be synced to the target account, skip the redirect!
+  // This seamlessly prevents double-loads on sites like YouTube that auto-strip parameters
+  // after reading them into their internal session cookies.
+  if (domainSyncedStates.get(domain.host) === accountNum) {
+    return false;
+  }
+
   // Build redirect URL
   const newUrl = buildProactiveUrl(url, domain, accountNum);
   if (!newUrl || newUrl === url) {
@@ -171,12 +202,24 @@ export async function handleProactiveRedirect(tabId, url, defaultAccount, siteOv
 
   // Perform redirect
   try {
+    domainSyncedStates.set(domain.host, accountNum); // Log our impending force-sync
     await chrome.tabs.update(tabId, { url: newUrl });
     console.log(`[G-Account Switcher] Proactive: ${url} → ${newUrl}`);
     return true;
   } catch (error) {
     console.error('[G-Account Switcher] Proactive redirect failed:', error);
     return false;
+  }
+}
+
+/**
+ * Clear the synced state for a domain so it can be re-synced if settings change.
+ */
+export function clearSyncedState(host) {
+  if (host) {
+    domainSyncedStates.delete(host);
+  } else {
+    domainSyncedStates.clear();
   }
 }
 
@@ -227,6 +270,7 @@ export async function applyForceSwitch(tabId, url, targetAccount, siteOverrides)
     }
 
     if (changed) {
+      domainSyncedStates.set(domain.host, accountNum);
       await chrome.tabs.update(tabId, { url: parsed.toString() });
       console.log(`[G-Account Switcher] Force Switch: ${url} → ${parsed.toString()}`);
       return true;

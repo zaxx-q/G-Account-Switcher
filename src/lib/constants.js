@@ -2,9 +2,11 @@
  * Google domain configuration.
  *
  * Each domain entry specifies:
- *   - type: 'path' (uses /u/X/) or 'query' (uses authuser=X) or 'both'
+ *   - type: 'path' (uses /u/X/) or 'query' (uses authuser=X) or 'excluded'
  *   - pathPrefix: where /u/X/ appears in the URL path (for path-type)
- *   - excluded: if true, never rewrite this domain
+ *   - stripsParam: (optional) true if the site strips the authuser= parameter
+ *     from the URL after reading it into session cookies (e.g., YouTube, Play Store).
+ *     This triggers TTL-based anti-loop caching in proactive mode.
  *
  * Based on real-world URL patterns:
  *   https://mail.google.com/mail/u/1/
@@ -49,7 +51,7 @@ export const GOOGLE_DOMAINS = [
   { host: 'console.cloud.google.com',  type: 'path', pathPrefix: '' },
 
   // Play Store (uses ?authuser=X, strips it after load like YouTube)
-  { host: 'play.google.com',           type: 'query' },
+  { host: 'play.google.com',           type: 'query', stripsParam: true },
 
   // Google Docs suite — /u/X/ comes after the document type
   { host: 'docs.google.com',           type: 'path', pathPrefix: '/document' },
@@ -64,9 +66,9 @@ export const GOOGLE_DOMAINS = [
   // Search & Maps
   { host: 'www.google.com',            type: 'query' },  // Search, Maps, etc.
 
-  // YouTube
-  { host: 'www.youtube.com',           type: 'query' },
-  { host: 'studio.youtube.com',        type: 'query' },
+  // YouTube (strips authuser= after reading it into session cookies)
+  { host: 'www.youtube.com',           type: 'query', stripsParam: true },
+  { host: 'studio.youtube.com',        type: 'query', stripsParam: true },
 
   // NotebookLM
   { host: 'notebooklm.google.com',     type: 'query' },

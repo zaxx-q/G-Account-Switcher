@@ -101,39 +101,23 @@ function findCurrentSiteDomain(url) {
     );
     if (matches.length === 0) return null;
 
-    // Prefer most specific pathPrefix match
-    const pathMatches = matches.filter((d) => d.type === 'path');
-    if (pathMatches.length > 0) {
-      const sorted = pathMatches.sort(
-        (a, b) => (b.pathPrefix || '').length - (a.pathPrefix || '').length
-      );
-      for (const entry of sorted) {
-        if (!entry.pathPrefix || parsed.pathname.startsWith(entry.pathPrefix)) {
-          return entry;
-        }
-      }
-    }
+    // Priority 1: queryMatch entries (e.g., udm=50 for AI mode)
+    const withQueryMatch = matches.filter((d) => {
+      if (!d.queryMatch) return false;
+      const pathOk = !d.pathPrefix || parsed.pathname.startsWith(d.pathPrefix);
+      return pathOk && parsed.searchParams.get(d.queryMatch.key) === d.queryMatch.value;
+    });
+    if (withQueryMatch.length > 0) return withQueryMatch[0];
 
-    // Query-based match (supports pathPrefix and queryMatch)
-    const queryMatches = matches.filter((d) => d.type === 'query');
-    if (queryMatches.length > 0) {
-      // First, check for queryMatch entries (e.g., udm=50 for AI mode)
-      const withQueryMatch = queryMatches.filter((d) => {
-        if (!d.queryMatch) return false;
-        const pathOk = !d.pathPrefix || parsed.pathname.startsWith(d.pathPrefix);
-        return pathOk && parsed.searchParams.get(d.queryMatch.key) === d.queryMatch.value;
-      });
-      if (withQueryMatch.length > 0) return withQueryMatch[0];
+    // Priority 2: specific (non-empty) pathPrefix match across ALL types
+    const specificMatches = matches
+      .filter((d) => d.pathPrefix && !d.queryMatch && parsed.pathname.startsWith(d.pathPrefix))
+      .sort((a, b) => (b.pathPrefix || '').length - (a.pathPrefix || '').length);
+    if (specificMatches.length > 0) return specificMatches[0];
 
-      // Prefer entries with pathPrefix that match the current path
-      const withPrefix = queryMatches
-        .filter((d) => d.pathPrefix && !d.queryMatch && parsed.pathname.startsWith(d.pathPrefix))
-        .sort((a, b) => (b.pathPrefix || '').length - (a.pathPrefix || '').length);
-      if (withPrefix.length > 0) return withPrefix[0];
-
-      // Fall back to entries without pathPrefix or queryMatch
-      return queryMatches.find((d) => !d.pathPrefix && !d.queryMatch) || queryMatches[0];
-    }
+    // Priority 3: catchall entries (empty/no pathPrefix, no queryMatch)
+    const catchall = matches.find((d) => !d.pathPrefix && !d.queryMatch);
+    if (catchall) return catchall;
 
     return null;
   } catch {

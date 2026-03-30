@@ -22,6 +22,7 @@
  *   https://www.google.com/maps?authuser=1
  *   https://www.google.com/search?q=test&authuser=3
  *   https://www.google.com/search?q=test&udm=50&authuser=2  (AI mode)
+ *   https://docs.google.com/forms/d/e/1FA.../viewform?authuser=1
  */
 
 // Domains where /u/X/ appears right after a known path segment
@@ -63,9 +64,12 @@ export const GOOGLE_DOMAINS = [
   { host: 'docs.google.com',           type: 'path', pathPrefix: '/document' },
   { host: 'docs.google.com',           type: 'path', pathPrefix: '/spreadsheets' },
   { host: 'docs.google.com',           type: 'path', pathPrefix: '/presentation' },
-  { host: 'docs.google.com',           type: 'path', pathPrefix: '/forms' },
   { host: 'docs.google.com',           type: 'path', pathPrefix: '/drawings' },
   { host: 'docs.google.com',           type: 'path', pathPrefix: '' },
+
+  // Google Forms — uses ?authuser=X (strips it after reading, like YouTube)
+  // Must be separate from Docs because Forms rejects /u/X/ path segments.
+  { host: 'docs.google.com',           type: 'query', pathPrefix: '/forms', siteKey: 'docs.google.com/forms', stripsParam: true },
 
   // ── Query-based domains (authuser=X in query string) ──
 

@@ -89,48 +89,30 @@ function findMatchingDomain(url) {
 
   const host = parsed.hostname;
 
-  // Find matching domain entries (most specific pathPrefix wins)
+  // Find matching domain entries
   const matches = GOOGLE_DOMAINS.filter(
     (d) => d.host === host && d.type !== 'excluded'
   );
 
   if (matches.length === 0) return null;
 
-  // For path-based domains, try to find the most specific pathPrefix match
-  const pathMatches = matches.filter((d) => d.type === 'path');
-  if (pathMatches.length > 0) {
-    // Sort by pathPrefix length descending (most specific first)
-    const sorted = pathMatches.sort(
-      (a, b) => (b.pathPrefix || '').length - (a.pathPrefix || '').length
-    );
-    for (const entry of sorted) {
-      if (!entry.pathPrefix || parsed.pathname.startsWith(entry.pathPrefix)) {
-        return entry;
-      }
-    }
-  }
+  // Priority 1: queryMatch entries (e.g., udm=50 for AI mode)
+  const withQueryMatch = matches.filter((d) => {
+    if (!d.queryMatch) return false;
+    const pathOk = !d.pathPrefix || parsed.pathname.startsWith(d.pathPrefix);
+    return pathOk && parsed.searchParams.get(d.queryMatch.key) === d.queryMatch.value;
+  });
+  if (withQueryMatch.length > 0) return withQueryMatch[0];
 
-  // Check query-based domains (also supports pathPrefix and queryMatch matching)
-  const queryMatches = matches.filter((d) => d.type === 'query');
-  if (queryMatches.length > 0) {
-    // First, check for queryMatch entries (e.g., udm=50 for AI mode)
-    const withQueryMatch = queryMatches.filter((d) => {
-      if (!d.queryMatch) return false;
-      const pathOk = !d.pathPrefix || parsed.pathname.startsWith(d.pathPrefix);
-      return pathOk && parsed.searchParams.get(d.queryMatch.key) === d.queryMatch.value;
-    });
-    if (withQueryMatch.length > 0) return withQueryMatch[0];
+  // Priority 2: specific (non-empty) pathPrefix match across ALL types
+  const specificMatches = matches
+    .filter((d) => d.pathPrefix && !d.queryMatch && parsed.pathname.startsWith(d.pathPrefix))
+    .sort((a, b) => (b.pathPrefix || '').length - (a.pathPrefix || '').length);
+  if (specificMatches.length > 0) return specificMatches[0];
 
-    // Prefer entries with pathPrefix that match the current path
-    const withPrefix = queryMatches
-      .filter((d) => d.pathPrefix && !d.queryMatch && parsed.pathname.startsWith(d.pathPrefix))
-      .sort((a, b) => (b.pathPrefix || '').length - (a.pathPrefix || '').length);
-    if (withPrefix.length > 0) return withPrefix[0];
-
-    // Fall back to entries without pathPrefix or queryMatch
-    const withoutPrefix = queryMatches.find((d) => !d.pathPrefix && !d.queryMatch);
-    if (withoutPrefix) return withoutPrefix;
-  }
+  // Priority 3: catchall entries (empty/no pathPrefix, no queryMatch)
+  const catchall = matches.find((d) => !d.pathPrefix && !d.queryMatch);
+  if (catchall) return catchall;
 
   return null;
 }
@@ -265,7 +247,7 @@ export async function handleProactiveRedirect(tabId, url, defaultAccount, siteSe
 
       if (newUrl && newUrl !== url) {
         if (domain.stripsParam) {
-          recordSync(domain.host, accountNum);
+          recordSync(getSiteKey(domain), accountNum);
         }
         await chrome.tabs.update(tabId, { url: newUrl });
         console.log(`[G-Account Switcher] Proactive (account mismatch): ${url} → ${newUrl}`);
@@ -277,9 +259,9 @@ export async function handleProactiveRedirect(tabId, url, defaultAccount, siteSe
 
   // ── URL has no account identifier (bare URL) ──
 
-  // For param-stripping domains (YouTube, Play Store): check TTL cache
+  // For param-stripping domains (YouTube, Play Store, Forms): check TTL cache
   // to avoid infinite redirect loops (they strip authuser= after reading it)
-  if (domain.stripsParam && isSyncedCacheValid(domain.host, accountNum)) {
+  if (domain.stripsParam && isSyncedCacheValid(getSiteKey(domain), accountNum)) {
     return false;
   }
 
@@ -292,7 +274,7 @@ export async function handleProactiveRedirect(tabId, url, defaultAccount, siteSe
   // Perform redirect
   try {
     if (domain.stripsParam) {
-      recordSync(domain.host, accountNum);
+      recordSync(getSiteKey(domain), accountNum);
     }
     await chrome.tabs.update(tabId, { url: newUrl });
     console.log(`[G-Account Switcher] Proactive: ${url} → ${newUrl}`);
@@ -366,7 +348,7 @@ export async function applyForceSwitch(tabId, url, targetAccount, siteSettings, 
 
     if (changed) {
       if (domain.stripsParam) {
-        recordSync(domain.host, accountNum);
+        recordSync(getSiteKey(domain), accountNum);
       }
       await chrome.tabs.update(tabId, { url: parsed.toString() });
       console.log(`[G-Account Switcher] Force Switch: ${url} → ${parsed.toString()}`);

@@ -5,17 +5,17 @@
  * in Google URLs to point to the selected account.
  *
  * Rule ID scheme:
- *   1–500   : Global rules (default account)
- *   501–1000: Per-site override rules (higher priority)
+ *   1–500   : Global rules (default account, only when globalAccountEnabled)
+ *   501–1000: Per-site rules (higher priority)
  *   1001–1010: Special-case redirect rules (gmail.com → mail.google.com)
  */
-import { GOOGLE_DOMAINS, OVERRIDE_DISABLED } from './constants.js';
+import { GOOGLE_DOMAINS, SITE_DISABLED } from './constants.js';
 
 const GLOBAL_RULE_BASE = 1;
-const OVERRIDE_RULE_BASE = 501;
+const SITE_RULE_BASE = 501;
 const SPECIAL_RULE_BASE = 1001;
 const GLOBAL_PRIORITY = 1;
-const OVERRIDE_PRIORITY = 2;
+const SITE_PRIORITY = 2;
 const SPECIAL_PRIORITY = 3;
 
 /**
@@ -127,64 +127,70 @@ function buildGmailRedirectRules(accountNum) {
  * Generate all declarativeNetRequest rules based on current settings.
  *
  * @param {number} defaultAccount - The global default account index
- * @param {Object} siteOverrides - Map of host → account index (or OVERRIDE_DISABLED)
+ * @param {Object} siteSettings - Map of host → account index (or SITE_DISABLED)
  * @param {boolean} enabled - Whether the extension is enabled
+ * @param {boolean} globalAccountEnabled - Whether the global default account is active
  * @returns {Array} Array of declarativeNetRequest rule objects
  */
-export function generateRules(defaultAccount, siteOverrides = {}, enabled = true) {
+export function generateRules(defaultAccount, siteSettings = {}, enabled = true, globalAccountEnabled = false) {
   if (!enabled) {
     return [];
   }
 
   const rules = [];
   let globalId = GLOBAL_RULE_BASE;
-  let overrideId = OVERRIDE_RULE_BASE;
+  let siteId = SITE_RULE_BASE;
 
   for (const domain of GOOGLE_DOMAINS) {
     if (domain.type === 'excluded') {
       continue;
     }
 
-    const hasOverride = domain.host in siteOverrides;
-    const overrideValue = hasOverride ? siteOverrides[domain.host] : undefined;
+    const hasSiteSetting = domain.host in siteSettings;
+    const siteValue = hasSiteSetting ? siteSettings[domain.host] : undefined;
 
-    // If override is OVERRIDE_DISABLED, skip rule generation for this domain
+    // If site setting is SITE_DISABLED, skip rule generation for this domain
     // (no redirect rule = no account rewriting = Google's default behavior)
-    if (overrideValue === OVERRIDE_DISABLED) {
+    if (siteValue === SITE_DISABLED) {
       continue;
     }
 
-    const accountNum = hasOverride ? overrideValue : defaultAccount;
-
-    if (domain.type === 'path') {
-      if (hasOverride) {
+    if (hasSiteSetting) {
+      // Per-site rule (always generated when a site setting exists)
+      const accountNum = siteValue;
+      if (domain.type === 'path') {
         rules.push(
-          buildPathRule(overrideId++, OVERRIDE_PRIORITY, domain.host, domain.pathPrefix, accountNum)
+          buildPathRule(siteId++, SITE_PRIORITY, domain.host, domain.pathPrefix, accountNum)
         );
-      } else {
+      } else if (domain.type === 'query') {
         rules.push(
-          buildPathRule(globalId++, GLOBAL_PRIORITY, domain.host, domain.pathPrefix, accountNum)
+          buildQueryRule(siteId++, SITE_PRIORITY, domain.host, accountNum, domain.pathPrefix || '')
         );
       }
-    } else if (domain.type === 'query') {
-      if (hasOverride) {
+    } else if (globalAccountEnabled) {
+      // Global rule (only when global default is enabled)
+      if (domain.type === 'path') {
         rules.push(
-          buildQueryRule(overrideId++, OVERRIDE_PRIORITY, domain.host, accountNum, domain.pathPrefix || '')
+          buildPathRule(globalId++, GLOBAL_PRIORITY, domain.host, domain.pathPrefix, defaultAccount)
         );
-      } else {
+      } else if (domain.type === 'query') {
         rules.push(
-          buildQueryRule(globalId++, GLOBAL_PRIORITY, domain.host, accountNum, domain.pathPrefix || '')
+          buildQueryRule(globalId++, GLOBAL_PRIORITY, domain.host, defaultAccount, domain.pathPrefix || '')
         );
       }
     }
   }
 
   // Special-case: gmail.com → mail.google.com/mail/u/X/
-  const gmailOverride = siteOverrides['mail.google.com'];
-  // Skip gmail redirect rules if mail.google.com is disabled
-  if (gmailOverride !== OVERRIDE_DISABLED) {
-    const gmailAccount = gmailOverride !== undefined ? gmailOverride : defaultAccount;
-    rules.push(...buildGmailRedirectRules(gmailAccount));
+  const gmailSetting = siteSettings['mail.google.com'];
+  if (gmailSetting === SITE_DISABLED) {
+    // Skip gmail redirect rules if mail.google.com is disabled
+  } else if (gmailSetting !== undefined) {
+    // Use per-site setting for gmail
+    rules.push(...buildGmailRedirectRules(gmailSetting));
+  } else if (globalAccountEnabled) {
+    // Use global default for gmail
+    rules.push(...buildGmailRedirectRules(defaultAccount));
   }
 
   return rules;
@@ -194,16 +200,17 @@ export function generateRules(defaultAccount, siteOverrides = {}, enabled = true
  * Apply new rules by removing all existing dynamic rules and adding new ones.
  *
  * @param {number} defaultAccount
- * @param {Object} siteOverrides
+ * @param {Object} siteSettings
  * @param {boolean} enabled
+ * @param {boolean} globalAccountEnabled
  */
-export async function applyRules(defaultAccount, siteOverrides, enabled) {
+export async function applyRules(defaultAccount, siteSettings, enabled, globalAccountEnabled) {
   // Get all existing dynamic rules
   const existingRules = await chrome.declarativeNetRequest.getDynamicRules();
   const removeRuleIds = existingRules.map((r) => r.id);
 
   // Generate new rules
-  const addRules = generateRules(defaultAccount, siteOverrides, enabled);
+  const addRules = generateRules(defaultAccount, siteSettings, enabled, globalAccountEnabled);
 
   // Atomic update: remove old, add new
   await chrome.declarativeNetRequest.updateDynamicRules({
@@ -213,6 +220,6 @@ export async function applyRules(defaultAccount, siteOverrides, enabled) {
 
   console.log(
     `[G-Account Switcher] Applied ${addRules.length} rules (default: ${defaultAccount}, ` +
-    `overrides: ${Object.keys(siteOverrides).length}, enabled: ${enabled})`
+    `sites: ${Object.keys(siteSettings).length}, global: ${globalAccountEnabled}, enabled: ${enabled})`
   );
 }

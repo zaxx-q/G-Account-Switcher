@@ -1,11 +1,11 @@
 /**
  * Popup UI controller.
  *
- * Handles all user interactions in the popup: account selection,
- * mode switching, per-site overrides, account detection/management,
- * quick-switch for current site, and profile picture display.
+ * Handles all user interactions in the popup: per-site account selection
+ * via icon-based avatar selector, site settings management, account
+ * detection/management, collapsible global default section, and mode switching.
  */
-import { GOOGLE_DOMAINS, STORAGE_KEYS, MAX_ACCOUNT_INDEX, OVERRIDE_DISABLED } from '../lib/constants.js';
+import { GOOGLE_DOMAINS, STORAGE_KEYS, MAX_ACCOUNT_INDEX, SITE_DISABLED } from '../lib/constants.js';
 import { getStorage, setStorage } from '../lib/storage.js';
 
 // ─── DOM References ───
@@ -21,17 +21,27 @@ const cancelAccountBtn = document.getElementById('cancelAccountBtn');
 const newIndexInput = document.getElementById('newIndex');
 const newEmailInput = document.getElementById('newEmail');
 const newLabelInput = document.getElementById('newLabel');
-const overrideListEl = document.getElementById('overrideList');
-const addOverrideBtn = document.getElementById('addOverrideBtn');
-const addOverrideForm = document.getElementById('addOverrideForm');
-const overrideSiteSelect = document.getElementById('overrideSite');
-const overrideAccountInput = document.getElementById('overrideAccount');
-const saveOverrideBtn = document.getElementById('saveOverrideBtn');
-const cancelOverrideBtn = document.getElementById('cancelOverrideBtn');
+const siteSettingListEl = document.getElementById('siteSettingList');
+const addSiteSettingBtn = document.getElementById('addSiteSettingBtn');
+const addSiteSettingForm = document.getElementById('addSiteSettingForm');
+const settingSiteSelect = document.getElementById('settingSite');
+const settingAccountInput = document.getElementById('settingAccount');
+const saveSiteSettingBtn = document.getElementById('saveSiteSettingBtn');
+const cancelSiteSettingBtn = document.getElementById('cancelSiteSettingBtn');
+const siteSettingEmpty = document.getElementById('siteSettingEmpty');
 const statusBar = document.getElementById('statusBar');
-const quickSwitchSection = document.getElementById('quickSwitchSection');
-const quickSwitchSelect = document.getElementById('quickSwitchSelect');
+const currentSiteSection = document.getElementById('currentSiteSection');
+const siteAccountIconsEl = document.getElementById('siteAccountIcons');
 const currentSiteName = document.getElementById('currentSiteName');
+const currentSiteStatus = document.getElementById('currentSiteStatus');
+const globalSection = document.getElementById('globalSection');
+const globalHeader = document.getElementById('globalHeader');
+const globalArrow = document.getElementById('globalArrow');
+const globalBody = document.getElementById('globalBody');
+const globalAccountToggle = document.getElementById('globalAccountToggle');
+const globalAccountRow = document.getElementById('globalAccountRow');
+const globalAccountSelect = document.getElementById('globalAccountSelect');
+const globalStatusBadge = document.getElementById('globalStatusBadge');
 
 // ─── State ───
 let currentSettings = {};
@@ -61,9 +71,274 @@ function getInitials(email) {
   return email[0].toUpperCase();
 }
 
+// ─── Utility: Get short label for an account ───
+function getShortLabel(account) {
+  if (account.label) return account.label;
+  if (account.name) return account.name.split(' ')[0];
+  if (account.email) return account.email.split('@')[0];
+  return `#${account.index}`;
+}
+
+// ─── Current Site — Icon-based Account Selector ───
+
+/**
+ * Find the matching domain config for the current tab's URL.
+ */
+function findCurrentSiteDomain(url) {
+  if (!url) return null;
+  try {
+    const parsed = new URL(url);
+    const host = parsed.hostname;
+
+    // Handle gmail.com → mail.google.com mapping
+    if (host === 'gmail.com' || host.endsWith('.gmail.com')) {
+      return GOOGLE_DOMAINS.find((d) => d.host === 'mail.google.com');
+    }
+
+    // Find matching domains
+    const matches = GOOGLE_DOMAINS.filter(
+      (d) => d.host === host && d.type !== 'excluded'
+    );
+    if (matches.length === 0) return null;
+
+    // Prefer most specific pathPrefix match
+    const pathMatches = matches.filter((d) => d.type === 'path');
+    if (pathMatches.length > 0) {
+      const sorted = pathMatches.sort(
+        (a, b) => (b.pathPrefix || '').length - (a.pathPrefix || '').length
+      );
+      for (const entry of sorted) {
+        if (!entry.pathPrefix || parsed.pathname.startsWith(entry.pathPrefix)) {
+          return entry;
+        }
+      }
+    }
+
+    // Query-based match
+    const queryMatches = matches.filter((d) => d.type === 'query');
+    if (queryMatches.length > 0) {
+      const withPrefix = queryMatches
+        .filter((d) => d.pathPrefix && parsed.pathname.startsWith(d.pathPrefix))
+        .sort((a, b) => (b.pathPrefix || '').length - (a.pathPrefix || '').length);
+      if (withPrefix.length > 0) return withPrefix[0];
+      return queryMatches.find((d) => !d.pathPrefix) || queryMatches[0];
+    }
+
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Render the Current Site panel with icon-based account selector.
+ */
+function renderCurrentSite() {
+  if (!currentTab?.url) {
+    currentSiteSection.style.display = 'none';
+    return;
+  }
+
+  try {
+    const urlObj = new URL(currentTab.url);
+    if (!urlObj.protocol.startsWith('http')) {
+      currentSiteSection.style.display = 'none';
+      return;
+    }
+  } catch {
+    currentSiteSection.style.display = 'none';
+    return;
+  }
+
+  const domain = findCurrentSiteDomain(currentTab.url);
+  if (!domain) {
+    currentSiteSection.style.display = 'none';
+    return;
+  }
+
+  // Show the current site section
+  currentSiteSection.style.display = '';
+
+  // Display site name
+  const siteLabel = domain.pathPrefix
+    ? `${domain.host}${domain.pathPrefix}`
+    : domain.host;
+  currentSiteName.textContent = siteLabel;
+
+  // Determine current selection
+  const currentSetting = currentSettings.siteSettings?.[domain.host];
+  const accounts = currentSettings.accounts || [];
+
+  // Build icon row
+  siteAccountIconsEl.innerHTML = '';
+
+  // "Default" option (no site-specific setting)
+  const defaultIcon = createSiteIcon({
+    value: '',
+    label: '—',
+    caption: currentSettings.globalAccountEnabled ? `Default (${currentSettings.defaultAccount})` : 'None',
+    isSpecial: true,
+    isSelected: currentSetting === undefined,
+    specialClass: currentSetting === undefined ? 'special-default' : '',
+  });
+  siteAccountIconsEl.appendChild(defaultIcon);
+
+  // Per-account icons
+  accounts.forEach((acc) => {
+    const icon = createAccountSiteIcon(acc, currentSetting === acc.index);
+    siteAccountIconsEl.appendChild(icon);
+  });
+
+  // "Disable" option
+  const disableIcon = createSiteIcon({
+    value: SITE_DISABLED.toString(),
+    label: '🚫',
+    caption: 'Off',
+    isSpecial: true,
+    isSelected: currentSetting === SITE_DISABLED,
+  });
+  siteAccountIconsEl.appendChild(disableIcon);
+
+  // Status line
+  updateCurrentSiteStatusText(domain.host, currentSetting, accounts);
+}
+
+/**
+ * Create an icon button for a specific account in the current site selector.
+ */
+function createAccountSiteIcon(account, isSelected) {
+  const btn = document.createElement('button');
+  btn.className = `site-account-icon${isSelected ? ' selected' : ''}`;
+  btn.dataset.value = account.index.toString();
+  btn.title = account.email || account.name || `Account ${account.index}`;
+
+  // Avatar
+  const avatar = document.createElement('div');
+  avatar.className = 'account-avatar';
+
+  if (account.photo) {
+    const img = document.createElement('img');
+    img.src = account.photo;
+    img.alt = account.name || account.email || '';
+    img.referrerPolicy = 'no-referrer';
+    img.onerror = () => {
+      img.replaceWith(createInitialsEl(account));
+    };
+    avatar.appendChild(img);
+  } else {
+    avatar.appendChild(createInitialsEl(account));
+  }
+
+  btn.appendChild(avatar);
+
+  // Index badge
+  const indexBadge = document.createElement('span');
+  indexBadge.className = 'account-index';
+  indexBadge.textContent = account.index.toString();
+  btn.appendChild(indexBadge);
+
+  // Caption
+  const caption = document.createElement('span');
+  caption.className = 'icon-caption';
+  caption.textContent = getShortLabel(account);
+  btn.appendChild(caption);
+
+  // Click handler
+  btn.addEventListener('click', () => handleCurrentSiteSelection(account.index));
+
+  return btn;
+}
+
+/**
+ * Create a special icon button (Default / Disable) for the current site selector.
+ */
+function createSiteIcon({ value, label, caption, isSpecial, isSelected, specialClass }) {
+  const btn = document.createElement('button');
+  btn.className = `site-account-icon${isSpecial ? ' special' : ''}${isSelected ? ' selected' : ''}${specialClass ? ' ' + specialClass : ''}`;
+  btn.dataset.value = value;
+  btn.title = caption;
+
+  const iconLabel = document.createElement('span');
+  iconLabel.className = 'icon-label';
+  iconLabel.textContent = label;
+  btn.appendChild(iconLabel);
+
+  const captionEl = document.createElement('span');
+  captionEl.className = 'icon-caption';
+  captionEl.textContent = caption;
+  btn.appendChild(captionEl);
+
+  btn.addEventListener('click', () => {
+    if (value === '') {
+      handleCurrentSiteSelection(null); // Remove site setting
+    } else {
+      handleCurrentSiteSelection(parseInt(value, 10));
+    }
+  });
+
+  return btn;
+}
+
+/**
+ * Update the status text below the icon selector.
+ */
+function updateCurrentSiteStatusText(host, currentSetting, accounts) {
+  if (currentSetting === SITE_DISABLED) {
+    currentSiteStatus.textContent = '🚫 Redirection disabled for this site';
+  } else if (currentSetting !== undefined) {
+    const acc = accounts.find((a) => a.index === currentSetting);
+    const label = acc ? (acc.label || acc.email || acc.name) : `Account ${currentSetting}`;
+    currentSiteStatus.textContent = `✓ Using: ${label} (Account ${currentSetting})`;
+  } else if (currentSettings.globalAccountEnabled) {
+    currentSiteStatus.textContent = `Using global default (Account ${currentSettings.defaultAccount})`;
+  } else {
+    currentSiteStatus.textContent = 'No setting — using browser default';
+  }
+}
+
+/**
+ * Handle clicking an account icon in the current site selector.
+ */
+async function handleCurrentSiteSelection(accountIndex) {
+  if (!currentTab?.url) return;
+
+  const domain = findCurrentSiteDomain(currentTab.url);
+  if (!domain) return;
+
+  const siteSettings = { ...(currentSettings.siteSettings || {}) };
+  let shouldRefresh = true;
+
+  if (accountIndex === null) {
+    // Remove site setting — use default
+    delete siteSettings[domain.host];
+    showStatus(`Removed setting for ${domain.host}`, 'info');
+  } else if (accountIndex === SITE_DISABLED) {
+    // Disable redirection
+    siteSettings[domain.host] = SITE_DISABLED;
+    showStatus(`Redirection disabled for ${domain.host}`, 'info');
+    shouldRefresh = false;
+  } else {
+    // Set specific account
+    siteSettings[domain.host] = accountIndex;
+    const acc = currentSettings.accounts?.find((a) => a.index === accountIndex);
+    const label = acc?.label || acc?.email || `Account ${accountIndex}`;
+    showStatus(`${domain.host} → ${label}`, 'success');
+  }
+
+  currentSettings.siteSettings = siteSettings;
+  await updateSettingsAndWait({ [STORAGE_KEYS.SITE_SETTINGS]: siteSettings });
+  renderCurrentSite();
+  renderSiteSettings(siteSettings, currentSettings.accounts);
+
+  // Auto-refresh current tab (skip when disabling redirection)
+  if (shouldRefresh) {
+    refreshCurrentTabNow();
+  }
+}
+
 // ─── Account List Rendering ───
 
-function renderAccounts(accounts, defaultAccount) {
+function renderAccounts(accounts) {
   // Remove existing account items (keep empty state)
   const existingItems = accountListEl.querySelectorAll('.account-item');
   existingItems.forEach((item) => item.remove());
@@ -77,14 +352,7 @@ function renderAccounts(accounts, defaultAccount) {
 
   accounts.forEach((account) => {
     const item = document.createElement('div');
-    item.className = `account-item${account.index === defaultAccount ? ' selected' : ''}`;
-
-    const radio = document.createElement('input');
-    radio.type = 'radio';
-    radio.name = 'defaultAccount';
-    radio.value = account.index;
-    radio.checked = account.index === defaultAccount;
-    radio.addEventListener('change', () => selectAccount(account.index));
+    item.className = 'account-item';
 
     // Avatar (profile picture or initials)
     const avatar = document.createElement('div');
@@ -149,16 +417,9 @@ function renderAccounts(accounts, defaultAccount) {
     actions.appendChild(editBtn);
     actions.appendChild(deleteBtn);
 
-    item.appendChild(radio);
     item.appendChild(avatar);
     item.appendChild(info);
     item.appendChild(actions);
-
-    // Click entire row to select
-    item.addEventListener('click', () => {
-      radio.checked = true;
-      selectAccount(account.index);
-    });
 
     accountListEl.appendChild(item);
   });
@@ -172,20 +433,6 @@ function createInitialsEl(account) {
   initialsEl.className = 'account-initials';
   initialsEl.textContent = getInitials(account.email || account.name);
   return initialsEl;
-}
-
-async function selectAccount(index) {
-  const prevAccount = currentSettings.defaultAccount;
-  currentSettings.defaultAccount = index;
-  await updateSettingsAndWait({ [STORAGE_KEYS.DEFAULT_ACCOUNT]: index });
-  renderAccounts(currentSettings.accounts, index);
-  renderQuickSwitch(); // Update Quick Switch to reflect new default account
-  showStatus(`Default account set to ${index}`, 'success');
-
-  // Auto-refresh current tab if it's a Google/YouTube page and account changed
-  if (prevAccount !== index && currentTab?.id && currentTab?.url) {
-    refreshCurrentTabNow();
-  }
 }
 
 /**
@@ -232,14 +479,16 @@ async function removeAccount(index) {
   currentSettings.accounts = accounts;
   await setStorage({ [STORAGE_KEYS.ACCOUNTS]: accounts });
 
-  // If the removed account was the default, reset to first available or 0
+  // If the removed account was the global default, reset to first available or 0
   if (currentSettings.defaultAccount === index) {
     const newDefault = accounts.length > 0 ? accounts[0].index : 0;
     currentSettings.defaultAccount = newDefault;
     await updateSettingsAndWait({ [STORAGE_KEYS.DEFAULT_ACCOUNT]: newDefault });
   }
 
-  renderAccounts(accounts, currentSettings.defaultAccount);
+  renderAccounts(accounts);
+  renderCurrentSite();
+  renderGlobalSection();
   showStatus('Account removed', 'info');
 }
 
@@ -256,7 +505,9 @@ function editAccountLabel(account) {
 
   currentSettings.accounts = accounts;
   setStorage({ [STORAGE_KEYS.ACCOUNTS]: accounts });
-  renderAccounts(accounts, currentSettings.defaultAccount);
+  renderAccounts(accounts);
+  renderCurrentSite();
+  renderGlobalSection();
   showStatus('Label updated', 'success');
 }
 
@@ -300,81 +551,189 @@ async function saveNewAccount() {
 
   await setStorage({ [STORAGE_KEYS.ACCOUNTS]: accounts });
   addAccountForm.classList.add('hidden');
-  renderAccounts(accounts, currentSettings.defaultAccount);
+  renderAccounts(accounts);
+  renderCurrentSite();
+  renderGlobalSection();
   showStatus('Account added', 'success');
 }
 
-// ─── Override List Rendering ───
+// ─── Site Settings Rendering ───
 
-function renderOverrides(siteOverrides, accounts) {
-  overrideListEl.innerHTML = '';
+function renderSiteSettings(siteSettings, accounts) {
+  // Remove existing items (keep empty state element)
+  const existingItems = siteSettingListEl.querySelectorAll('.site-setting-item');
+  existingItems.forEach((item) => item.remove());
 
-  const entries = Object.entries(siteOverrides || {});
+  const entries = Object.entries(siteSettings || {});
   if (entries.length === 0) {
+    siteSettingEmpty.classList.remove('hidden');
     return;
   }
 
+  siteSettingEmpty.classList.add('hidden');
+
   entries.forEach(([host, accountIndex]) => {
     const item = document.createElement('div');
-    item.className = 'override-item';
+    item.className = 'site-setting-item';
 
-    const site = document.createElement('span');
-    site.className = 'override-site';
-    site.textContent = host;
-
-    const arrow = document.createElement('span');
-    arrow.className = 'override-arrow';
-    arrow.textContent = '→';
-
-    const acct = document.createElement('span');
-    acct.className = 'override-account';
-
-    if (accountIndex === OVERRIDE_DISABLED) {
-      acct.textContent = 'Disabled';
-      acct.style.opacity = '0.6';
-      acct.style.fontStyle = 'italic';
+    // Avatar
+    const avatar = document.createElement('div');
+    if (accountIndex === SITE_DISABLED) {
+      avatar.className = 'site-setting-avatar disabled';
+      avatar.textContent = '🚫';
     } else {
-      const accountLabel = accounts?.find((a) => a.index === accountIndex);
-      acct.textContent = accountLabel
-        ? `${accountIndex} (${accountLabel.label || accountLabel.email || accountLabel.name})`
+      avatar.className = 'site-setting-avatar';
+      const acc = accounts?.find((a) => a.index === accountIndex);
+      if (acc?.photo) {
+        const img = document.createElement('img');
+        img.src = acc.photo;
+        img.alt = acc.name || acc.email || '';
+        img.referrerPolicy = 'no-referrer';
+        img.onerror = () => {
+          img.replaceWith(createInitialsEl(acc));
+        };
+        avatar.appendChild(img);
+      } else if (acc) {
+        avatar.appendChild(createInitialsEl(acc));
+      } else {
+        const initialsEl = document.createElement('span');
+        initialsEl.className = 'account-initials';
+        initialsEl.textContent = accountIndex.toString();
+        avatar.appendChild(initialsEl);
+      }
+    }
+
+    // Info block (site name + account label)
+    const info = document.createElement('div');
+    info.className = 'site-setting-info';
+
+    const siteName = document.createElement('span');
+    siteName.className = 'site-setting-site';
+    siteName.textContent = host;
+
+    const acctLabel = document.createElement('span');
+    if (accountIndex === SITE_DISABLED) {
+      acctLabel.className = 'site-setting-account disabled-text';
+      acctLabel.textContent = 'Redirection disabled';
+    } else {
+      acctLabel.className = 'site-setting-account';
+      const acc = accounts?.find((a) => a.index === accountIndex);
+      acctLabel.textContent = acc
+        ? `Account ${accountIndex} · ${acc.label || acc.email || acc.name}`
         : `Account ${accountIndex}`;
     }
 
-    const right = document.createElement('div');
-    right.className = 'override-right';
+    info.appendChild(siteName);
+    info.appendChild(acctLabel);
+
+    // Action buttons (visible on hover)
+    const actions = document.createElement('div');
+    actions.className = 'site-setting-actions';
+
+    const editBtn = document.createElement('button');
+    editBtn.className = 'btn btn-sm';
+    editBtn.textContent = '✏️';
+    editBtn.title = 'Change account';
+    editBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      startInlineEdit(host, accountIndex, info);
+    });
 
     const delBtn = document.createElement('button');
     delBtn.className = 'btn btn-danger btn-sm';
     delBtn.textContent = '✕';
-    delBtn.title = 'Remove override';
-    delBtn.addEventListener('click', () => removeOverride(host));
+    delBtn.title = 'Remove setting';
+    delBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      removeSiteSetting(host);
+    });
 
-    right.appendChild(acct);
-    right.appendChild(arrow.cloneNode(false)); // spacer
-    right.appendChild(delBtn);
+    actions.appendChild(editBtn);
+    actions.appendChild(delBtn);
 
-    item.appendChild(site);
-    item.appendChild(arrow);
-    item.appendChild(right);
+    item.appendChild(avatar);
+    item.appendChild(info);
+    item.appendChild(actions);
 
-    overrideListEl.appendChild(item);
+    siteSettingListEl.appendChild(item);
   });
 }
 
-async function removeOverride(host) {
-  const overrides = { ...currentSettings.siteOverrides };
-  delete overrides[host];
-  currentSettings.siteOverrides = overrides;
-  await updateSettingsAndWait({ [STORAGE_KEYS.SITE_OVERRIDES]: overrides });
-  renderOverrides(overrides, currentSettings.accounts);
-  showStatus(`Override removed for ${host}`, 'info');
+/**
+ * Start inline editing for a site setting — replaces the account label
+ * with a <select> dropdown for quick account switching.
+ */
+function startInlineEdit(host, currentAccountIndex, infoEl) {
+  const accounts = currentSettings.accounts || [];
+
+  // Replace the account label with a select
+  const select = document.createElement('select');
+  select.className = 'site-setting-inline-select';
+
+  // Account options
+  accounts.forEach((acc) => {
+    const opt = document.createElement('option');
+    opt.value = acc.index.toString();
+    opt.textContent = `${acc.index}: ${acc.label || acc.email || acc.name || 'Account ' + acc.index}`;
+    if (acc.index === currentAccountIndex) opt.selected = true;
+    select.appendChild(opt);
+  });
+
+  // Disable option
+  const disableOpt = document.createElement('option');
+  disableOpt.value = SITE_DISABLED.toString();
+  disableOpt.textContent = '🚫 Disable redirection';
+  if (currentAccountIndex === SITE_DISABLED) disableOpt.selected = true;
+  select.appendChild(disableOpt);
+
+  // Replace info content with select
+  const originalContent = infoEl.innerHTML;
+  infoEl.innerHTML = '';
+
+  const siteName = document.createElement('span');
+  siteName.className = 'site-setting-site';
+  siteName.textContent = host;
+  infoEl.appendChild(siteName);
+  infoEl.appendChild(select);
+
+  select.focus();
+
+  // Handle selection
+  const commitEdit = async () => {
+    const newIndex = parseInt(select.value, 10);
+    if (newIndex !== currentAccountIndex) {
+      const siteSettings = { ...(currentSettings.siteSettings || {}), [host]: newIndex };
+      currentSettings.siteSettings = siteSettings;
+      await updateSettingsAndWait({ [STORAGE_KEYS.SITE_SETTINGS]: siteSettings });
+      renderCurrentSite();
+      showStatus(`${host} → ${newIndex === SITE_DISABLED ? 'Disabled' : 'Account ' + newIndex}`, 'success');
+      refreshCurrentTabNow();
+    }
+    renderSiteSettings(currentSettings.siteSettings, currentSettings.accounts);
+  };
+
+  select.addEventListener('change', commitEdit);
+  select.addEventListener('blur', () => {
+    // Restore original content if no change was committed
+    renderSiteSettings(currentSettings.siteSettings, currentSettings.accounts);
+  });
+}
+
+async function removeSiteSetting(host) {
+  const siteSettings = { ...currentSettings.siteSettings };
+  delete siteSettings[host];
+  currentSettings.siteSettings = siteSettings;
+  await updateSettingsAndWait({ [STORAGE_KEYS.SITE_SETTINGS]: siteSettings });
+  renderSiteSettings(siteSettings, currentSettings.accounts);
+  renderCurrentSite();
+  showStatus(`Setting removed for ${host}`, 'info');
   refreshCurrentTabNow();
 }
 
-// ─── Add Override ───
+// ─── Add Site Setting ───
 
-function populateOverrideSites() {
-  overrideSiteSelect.innerHTML = '';
+function populateSettingSites() {
+  settingSiteSelect.innerHTML = '';
 
   // Get unique non-excluded hosts
   const hosts = [...new Set(
@@ -387,191 +746,97 @@ function populateOverrideSites() {
     const option = document.createElement('option');
     option.value = host;
     option.textContent = host;
-    // Disable if already has an override
-    if (currentSettings.siteOverrides && host in currentSettings.siteOverrides) {
+    // Disable if already has a setting
+    if (currentSettings.siteSettings && host in currentSettings.siteSettings) {
       option.disabled = true;
-      option.textContent += ' (has override)';
+      option.textContent += ' (configured)';
     }
-    overrideSiteSelect.appendChild(option);
+    settingSiteSelect.appendChild(option);
   });
 }
 
-function showAddOverrideForm() {
-  populateOverrideSites();
-  overrideAccountInput.value = currentSettings.defaultAccount || 0;
-  addOverrideForm.classList.remove('hidden');
+function showAddSiteSettingForm() {
+  populateSettingSites();
+  settingAccountInput.value = currentSettings.defaultAccount || 0;
+  addSiteSettingForm.classList.remove('hidden');
 }
 
-async function saveNewOverride() {
-  const host = overrideSiteSelect.value;
-  const accountIndex = parseInt(overrideAccountInput.value, 10);
+async function saveNewSiteSetting() {
+  const host = settingSiteSelect.value;
+  const accountIndex = parseInt(settingAccountInput.value, 10);
 
   if (!host) {
     showStatus('Select a site', 'error');
     return;
   }
 
-  if (isNaN(accountIndex) || accountIndex < 0 || accountIndex > MAX_ACCOUNT_INDEX) {
-    showStatus(`Account index must be 0-${MAX_ACCOUNT_INDEX}`, 'error');
+  if (isNaN(accountIndex) || accountIndex < -1 || accountIndex > MAX_ACCOUNT_INDEX) {
+    showStatus(`Account index must be -1 to ${MAX_ACCOUNT_INDEX}`, 'error');
     return;
   }
 
-  const overrides = { ...(currentSettings.siteOverrides || {}), [host]: accountIndex };
-  currentSettings.siteOverrides = overrides;
-  await updateSettingsAndWait({ [STORAGE_KEYS.SITE_OVERRIDES]: overrides });
+  const siteSettings = { ...(currentSettings.siteSettings || {}), [host]: accountIndex };
+  currentSettings.siteSettings = siteSettings;
+  await updateSettingsAndWait({ [STORAGE_KEYS.SITE_SETTINGS]: siteSettings });
 
-  addOverrideForm.classList.add('hidden');
-  renderOverrides(overrides, currentSettings.accounts);
-  showStatus(`Override added: ${host} → Account ${accountIndex}`, 'success');
+  addSiteSettingForm.classList.add('hidden');
+  renderSiteSettings(siteSettings, currentSettings.accounts);
+  renderCurrentSite();
+  showStatus(`Setting added: ${host} → Account ${accountIndex}`, 'success');
   refreshCurrentTabNow();
 }
 
-// ─── Quick Switch for Current Site ───
+// ─── Global Section ───
 
-/**
- * Find the matching domain config for the current tab's URL.
- */
-function findCurrentSiteDomain(url) {
-  if (!url) return null;
-  try {
-    const parsed = new URL(url);
-    const host = parsed.hostname;
+function renderGlobalSection() {
+  const isEnabled = currentSettings.globalAccountEnabled || false;
 
-    // Handle gmail.com → mail.google.com mapping
-    if (host === 'gmail.com' || host.endsWith('.gmail.com')) {
-      return GOOGLE_DOMAINS.find((d) => d.host === 'mail.google.com');
-    }
+  // Badge
+  globalStatusBadge.textContent = isEnabled ? 'on' : 'off';
+  globalStatusBadge.className = `global-status${isEnabled ? ' active' : ''}`;
 
-    // Find matching domains
-    const matches = GOOGLE_DOMAINS.filter(
-      (d) => d.host === host && d.type !== 'excluded'
-    );
-    if (matches.length === 0) return null;
+  // Toggle
+  globalAccountToggle.checked = isEnabled;
 
-    // Prefer most specific pathPrefix match
-    const pathMatches = matches.filter((d) => d.type === 'path');
-    if (pathMatches.length > 0) {
-      const sorted = pathMatches.sort(
-        (a, b) => (b.pathPrefix || '').length - (a.pathPrefix || '').length
-      );
-      for (const entry of sorted) {
-        if (!entry.pathPrefix || parsed.pathname.startsWith(entry.pathPrefix)) {
-          return entry;
-        }
-      }
-    }
-
-    // Query-based match
-    const queryMatches = matches.filter((d) => d.type === 'query');
-    if (queryMatches.length > 0) {
-      const withPrefix = queryMatches
-        .filter((d) => d.pathPrefix && parsed.pathname.startsWith(d.pathPrefix))
-        .sort((a, b) => (b.pathPrefix || '').length - (a.pathPrefix || '').length);
-      if (withPrefix.length > 0) return withPrefix[0];
-      return queryMatches.find((d) => !d.pathPrefix) || queryMatches[0];
-    }
-
-    return null;
-  } catch {
-    return null;
+  // Account row visibility
+  if (isEnabled) {
+    globalAccountRow.classList.remove('hidden');
+  } else {
+    globalAccountRow.classList.add('hidden');
   }
+
+  // Populate account select
+  populateGlobalAccountSelect();
 }
 
-/**
- * Render the Quick Switch section based on current tab.
- */
-function renderQuickSwitch() {
-  if (!currentTab?.url) {
-    quickSwitchSection.style.display = 'none';
-    return;
-  }
-
-  try {
-    const urlObj = new URL(currentTab.url);
-    if (!urlObj.protocol.startsWith('http')) {
-      quickSwitchSection.style.display = 'none';
-      return;
-    }
-  } catch {
-    quickSwitchSection.style.display = 'none';
-    return;
-  }
-
-  const domain = findCurrentSiteDomain(currentTab.url);
-  if (!domain) {
-    quickSwitchSection.style.display = 'none';
-    return;
-  }
-
-  // Show the quick switch section
-  quickSwitchSection.style.display = '';
-
-  // Display site name
-  const siteLabel = domain.pathPrefix
-    ? `${domain.host}${domain.pathPrefix}`
-    : domain.host;
-  currentSiteName.textContent = siteLabel;
-
-  // Build account options
-  const currentOverride = currentSettings.siteOverrides?.[domain.host];
+function populateGlobalAccountSelect() {
+  const accounts = currentSettings.accounts || [];
+  const currentDefault = currentSettings.defaultAccount || 0;
 
   let options = '';
-
-  // "Use default" option — shows current global default account number
-  options += `<option value="" ${currentOverride === undefined ? 'selected' : ''}>Use default (Account ${currentSettings.defaultAccount})</option>`;
-
-  // Per-account options
-  (currentSettings.accounts || []).forEach((acc) => {
-    const label = acc.label || acc.email || acc.name || `Account ${acc.index}`;
-    const isSelected = currentOverride === acc.index;
-    options += `<option value="${acc.index}" ${isSelected ? 'selected' : ''}>${acc.index}: ${label}</option>`;
-  });
-
-  // "Disable redirection" option
-  options += `<option value="${OVERRIDE_DISABLED}" ${currentOverride === OVERRIDE_DISABLED ? 'selected' : ''}>🚫 Disable redirection</option>`;
-
-  quickSwitchSelect.innerHTML = options;
-}
-
-/**
- * Handle quick switch account change for current site.
- */
-async function handleQuickSwitch(value) {
-  if (!currentTab?.url) return;
-
-  const domain = findCurrentSiteDomain(currentTab.url);
-  if (!domain) return;
-
-  const overrides = { ...(currentSettings.siteOverrides || {}) };
-  let shouldRefresh = true;
-
-  if (value === '') {
-    // Remove override — use default
-    delete overrides[domain.host];
-    showStatus(`Removed override for ${domain.host}`, 'info');
-  } else {
-    const index = parseInt(value, 10);
-
-    if (index === OVERRIDE_DISABLED) {
-      // Set override to disabled sentinel — don't refresh/change the URL
-      overrides[domain.host] = OVERRIDE_DISABLED;
-      showStatus(`Redirection disabled for ${domain.host}`, 'info');
-      shouldRefresh = false;
-    } else {
-      overrides[domain.host] = index;
-      const acc = currentSettings.accounts?.find((a) => a.index === index);
-      const label = acc?.label || acc?.email || `Account ${index}`;
-      showStatus(`${domain.host} → ${label}`, 'success');
+  // If no accounts detected, show basic index options
+  if (accounts.length === 0) {
+    for (let i = 0; i <= MAX_ACCOUNT_INDEX; i++) {
+      options += `<option value="${i}" ${i === currentDefault ? 'selected' : ''}>Account ${i}</option>`;
     }
+  } else {
+    accounts.forEach((acc) => {
+      const label = acc.label || acc.email || acc.name || `Account ${acc.index}`;
+      options += `<option value="${acc.index}" ${acc.index === currentDefault ? 'selected' : ''}>${acc.index}: ${label}</option>`;
+    });
   }
 
-  currentSettings.siteOverrides = overrides;
-  await updateSettingsAndWait({ [STORAGE_KEYS.SITE_OVERRIDES]: overrides });
-  renderOverrides(overrides, currentSettings.accounts);
+  globalAccountSelect.innerHTML = options;
+}
 
-  // Auto-refresh current tab (skip when disabling redirection)
-  if (shouldRefresh) {
-    refreshCurrentTabNow();
+function toggleGlobalBody() {
+  const isHidden = globalBody.classList.contains('hidden');
+  if (isHidden) {
+    globalBody.classList.remove('hidden');
+    globalArrow.classList.add('expanded');
+  } else {
+    globalBody.classList.add('hidden');
+    globalArrow.classList.remove('expanded');
   }
 }
 
@@ -586,8 +851,9 @@ async function handleDetect() {
 
     if (response?.success && response.accounts) {
       currentSettings.accounts = response.accounts;
-      renderAccounts(response.accounts, currentSettings.defaultAccount);
-      renderQuickSwitch(); // Re-render with new accounts
+      renderAccounts(response.accounts);
+      renderCurrentSite();
+      renderGlobalSection();
       showStatus(`Found ${response.accounts.length} account(s)`, 'success');
     } else {
       showStatus('Could not detect accounts. Are you logged in to Google?', 'error');
@@ -624,12 +890,40 @@ addAccountBtn.addEventListener('click', showAddAccountForm);
 saveAccountBtn.addEventListener('click', saveNewAccount);
 cancelAccountBtn.addEventListener('click', () => addAccountForm.classList.add('hidden'));
 
-addOverrideBtn.addEventListener('click', showAddOverrideForm);
-saveOverrideBtn.addEventListener('click', saveNewOverride);
-cancelOverrideBtn.addEventListener('click', () => addOverrideForm.classList.add('hidden'));
+addSiteSettingBtn.addEventListener('click', showAddSiteSettingForm);
+saveSiteSettingBtn.addEventListener('click', saveNewSiteSetting);
+cancelSiteSettingBtn.addEventListener('click', () => addSiteSettingForm.classList.add('hidden'));
 
-quickSwitchSelect.addEventListener('change', (e) => {
-  handleQuickSwitch(e.target.value);
+// Global section — collapsible header
+globalHeader.addEventListener('click', toggleGlobalBody);
+
+// Global account enabled toggle
+globalAccountToggle.addEventListener('change', async (e) => {
+  e.stopPropagation(); // Don't trigger collapse
+  const enabled = globalAccountToggle.checked;
+  currentSettings.globalAccountEnabled = enabled;
+  await updateSettingsAndWait({ [STORAGE_KEYS.GLOBAL_ACCOUNT_ENABLED]: enabled });
+  renderGlobalSection();
+  renderCurrentSite();
+  showStatus(enabled ? 'Global default enabled' : 'Global default disabled', 'info');
+  if (enabled && currentTab?.id && currentTab?.url) {
+    refreshCurrentTabNow();
+  }
+});
+
+// Global account select
+globalAccountSelect.addEventListener('change', async () => {
+  const index = parseInt(globalAccountSelect.value, 10);
+  const prevAccount = currentSettings.defaultAccount;
+  currentSettings.defaultAccount = index;
+  await updateSettingsAndWait({ [STORAGE_KEYS.DEFAULT_ACCOUNT]: index });
+  renderCurrentSite();
+  showStatus(`Global default set to Account ${index}`, 'success');
+
+  // Auto-refresh if account changed and global is enabled
+  if (prevAccount !== index && currentSettings.globalAccountEnabled && currentTab?.id && currentTab?.url) {
+    refreshCurrentTabNow();
+  }
 });
 
 // ─── Initialize ───
@@ -642,8 +936,9 @@ async function initPopup() {
         STORAGE_KEYS.ENABLED,
         STORAGE_KEYS.MODE,
         STORAGE_KEYS.DEFAULT_ACCOUNT,
+        STORAGE_KEYS.GLOBAL_ACCOUNT_ENABLED,
         STORAGE_KEYS.ACCOUNTS,
-        STORAGE_KEYS.SITE_OVERRIDES,
+        STORAGE_KEYS.SITE_SETTINGS,
       ]),
       chrome.tabs.query({ active: true, currentWindow: true }),
     ]);
@@ -655,10 +950,11 @@ async function initPopup() {
     enableToggle.checked = settings.enabled !== false;
     modeSelect.value = settings.mode || 'proactive';
 
-    // Render lists
-    renderAccounts(settings.accounts || [], settings.defaultAccount || 0);
-    renderOverrides(settings.siteOverrides || {}, settings.accounts || []);
-    renderQuickSwitch();
+    // Render sections
+    renderCurrentSite();
+    renderSiteSettings(settings.siteSettings || {}, settings.accounts || []);
+    renderAccounts(settings.accounts || []);
+    renderGlobalSection();
   } catch (error) {
     console.error('[G-Account Switcher] Popup init error:', error);
     showStatus('Failed to load settings', 'error');

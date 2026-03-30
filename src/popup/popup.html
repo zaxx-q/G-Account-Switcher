@@ -19,26 +19,50 @@
       </div>
     </header>
 
-    <!-- Mode -->
-    <div class="section mode-section">
-      <label for="modeSelect" class="label">Mode</label>
-      <select id="modeSelect" class="select">
-        <option value="proactive">Proactive (redirect bare URLs)</option>
-        <option value="passive">Passive (rewrite only)</option>
-      </select>
+    <!-- Current Site — icon-based account selector -->
+    <div class="section" id="currentSiteSection" style="display:none">
+      <div class="current-site-panel">
+        <div class="current-site-header">
+          <span class="site-icon">🌐</span>
+          <span class="current-site-name" id="currentSiteName">Current Site</span>
+        </div>
+        <div class="site-account-icons" id="siteAccountIcons">
+          <!-- Populated by JS -->
+        </div>
+        <div class="current-site-status" id="currentSiteStatus"></div>
+      </div>
     </div>
 
-    <!-- Quick Switch for current site -->
-    <div class="section" id="quickSwitchSection" style="display:none">
+    <!-- Site Settings -->
+    <div class="section">
       <div class="section-header">
-        <span class="section-title">
-          <span class="site-icon">🌐</span>
-          <span id="currentSiteName">Current Site</span>
-        </span>
+        <span class="section-title">Site Settings</span>
+        <button class="btn btn-sm" id="addSiteSettingBtn" title="Add site setting">+ Add</button>
       </div>
-      <select id="quickSwitchSelect" class="select">
-        <option value="">No override</option>
-      </select>
+      <div id="siteSettingList" class="site-setting-list">
+        <div class="empty-state" id="siteSettingEmpty">
+          <span>No sites configured yet.</span>
+          <span class="hint">Use the panel above to assign accounts to sites, or click <b>+ Add</b>.</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Add Site Setting Form (hidden) -->
+    <div id="addSiteSettingForm" class="section add-form hidden">
+      <div class="form-row">
+        <label for="settingSite" class="form-label">Site</label>
+        <select id="settingSite" class="select">
+          <!-- Populated by JS -->
+        </select>
+      </div>
+      <div class="form-row">
+        <label for="settingAccount" class="form-label">Account</label>
+        <input type="number" id="settingAccount" class="input input-sm" min="-1" max="9" value="0">
+      </div>
+      <div class="form-actions">
+        <button class="btn btn-primary" id="saveSiteSettingBtn">Save</button>
+        <button class="btn" id="cancelSiteSettingBtn">Cancel</button>
+      </div>
     </div>
 
     <!-- Accounts -->
@@ -61,15 +85,15 @@
     <!-- Add Account Form (hidden) -->
     <div id="addAccountForm" class="section add-form hidden">
       <div class="form-row">
-        <label for="newIndex" class="label">Index</label>
-        <input type="number" id="newIndex" class="input" min="0" max="9" value="0">
+        <label for="newIndex" class="form-label">Index</label>
+        <input type="number" id="newIndex" class="input input-sm" min="0" max="9" value="0">
       </div>
       <div class="form-row">
-        <label for="newEmail" class="label">Email</label>
+        <label for="newEmail" class="form-label">Email</label>
         <input type="email" id="newEmail" class="input" placeholder="user@gmail.com">
       </div>
       <div class="form-row">
-        <label for="newLabel" class="label">Label</label>
+        <label for="newLabel" class="form-label">Label</label>
         <input type="text" id="newLabel" class="input" placeholder="Work, Personal...">
       </div>
       <div class="form-actions">
@@ -78,31 +102,37 @@
       </div>
     </div>
 
-    <!-- Site Overrides -->
-    <div class="section">
-      <div class="section-header">
-        <span class="section-title">Site Overrides</span>
-        <button class="btn btn-sm" id="addOverrideBtn" title="Add override">+ Add</button>
+    <!-- Global Default (collapsible, off by default) -->
+    <div class="section global-section" id="globalSection">
+      <div class="global-header" id="globalHeader">
+        <span class="global-toggle-arrow" id="globalArrow">▸</span>
+        <span class="section-title">Global Default</span>
+        <span class="global-status" id="globalStatusBadge">off</span>
       </div>
-      <div id="overrideList" class="override-list"></div>
+      <div class="global-body hidden" id="globalBody">
+        <div class="global-toggle-row">
+          <label class="global-label" for="globalAccountToggle">Enable global default</label>
+          <div class="toggle-wrap">
+            <input type="checkbox" id="globalAccountToggle">
+          </div>
+        </div>
+        <div class="global-account-row hidden" id="globalAccountRow">
+          <label class="global-label" for="globalAccountSelect">Account</label>
+          <select id="globalAccountSelect" class="select">
+            <!-- Populated by JS -->
+          </select>
+        </div>
+        <p class="global-hint">When enabled, all Google sites without a specific setting will use this account.</p>
+      </div>
     </div>
 
-    <!-- Add Override Form (hidden) -->
-    <div id="addOverrideForm" class="section add-form hidden">
-      <div class="form-row">
-        <label for="overrideSite" class="label">Site</label>
-        <select id="overrideSite" class="select">
-          <!-- Populated by JS -->
-        </select>
-      </div>
-      <div class="form-row">
-        <label for="overrideAccount" class="label">Account #</label>
-        <input type="number" id="overrideAccount" class="input" min="0" max="9" value="0">
-      </div>
-      <div class="form-actions">
-        <button class="btn btn-primary" id="saveOverrideBtn">Save</button>
-        <button class="btn" id="cancelOverrideBtn">Cancel</button>
-      </div>
+    <!-- Mode (de-emphasized, at bottom) -->
+    <div class="section mode-footer">
+      <label for="modeSelect" class="label">Mode</label>
+      <select id="modeSelect" class="select">
+        <option value="proactive">Proactive (redirect bare URLs)</option>
+        <option value="passive">Passive (rewrite only)</option>
+      </select>
     </div>
 
     <!-- Status Bar -->

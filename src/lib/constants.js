@@ -109,10 +109,11 @@ export const ALL_GOOGLE_HOST_PATTERNS = [
  */
 export const STORAGE_DEFAULTS = {
   enabled: true,
-  mode: 'proactive',       // 'proactive' or 'passive'
+  mode: 'proactive',             // 'proactive' or 'passive'
   defaultAccount: 0,
-  accounts: [],            // [{ index: 0, email: '', label: '' }, ...]
-  siteOverrides: {},       // { 'youtube.com': 2, 'mail.google.com': 0, ... }
+  globalAccountEnabled: false,   // Global default is OFF by default (per-site first)
+  accounts: [],                  // [{ index: 0, email: '', label: '' }, ...]
+  siteSettings: {},              // { 'youtube.com': 2, 'mail.google.com': 0, ... }
 };
 
 /**
@@ -122,8 +123,9 @@ export const STORAGE_KEYS = {
   ENABLED: 'enabled',
   MODE: 'mode',
   DEFAULT_ACCOUNT: 'defaultAccount',
+  GLOBAL_ACCOUNT_ENABLED: 'globalAccountEnabled',
   ACCOUNTS: 'accounts',
-  SITE_OVERRIDES: 'siteOverrides',
+  SITE_SETTINGS: 'siteSettings',
 };
 
 /**
@@ -132,11 +134,11 @@ export const STORAGE_KEYS = {
 export const MAX_ACCOUNT_INDEX = 9;
 
 /**
- * Sentinel value for per-site overrides meaning "disable redirection entirely for this site".
- * When a site override is set to this value, no declarativeNetRequest rules are generated
+ * Sentinel value for per-site settings meaning "disable redirection entirely for this site".
+ * When a site setting is set to this value, no declarativeNetRequest rules are generated
  * and proactive mode skips the redirect.
  */
-export const OVERRIDE_DISABLED = -1;
+export const SITE_DISABLED = -1;
 
 /**
  * URL for the Google ListAccounts endpoint.

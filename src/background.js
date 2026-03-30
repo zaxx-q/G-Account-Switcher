@@ -7,9 +7,10 @@
  * 3. In proactive mode: listen to tabs.onUpdated for bare Google URLs
  * 4. Handle messages from popup (detect accounts, etc.)
  * 5. Cookie-based automatic account list refresh
+ * 6. Migrate legacy storage keys on install/update
  */
 import { STORAGE_KEYS } from './lib/constants.js';
-import { getAllSettings } from './lib/storage.js';
+import { getAllSettings, setStorage, getStorage } from './lib/storage.js';
 import { applyRules } from './lib/rules.js';
 import { handleProactiveRedirect, applyForceSwitch, clearSyncedState } from './lib/proactive.js';
 import { detectAndMergeAccounts } from './lib/accounts.js';
@@ -40,6 +41,41 @@ chrome.cookies.onChanged.addListener(({ cookie, removed }) => {
   }, 2000);
 });
 
+// ========== MIGRATION ==========
+
+/**
+ * Migrate legacy storage keys from v2 (siteOverrides) to v3 (siteSettings).
+ * Also sets globalAccountEnabled for existing users so behavior doesn't change.
+ */
+async function migrateStorage() {
+  const data = await chrome.storage.sync.get(null);
+
+  const updates = {};
+  let needsUpdate = false;
+
+  // Migrate siteOverrides → siteSettings
+  if (data.siteOverrides && !data.siteSettings) {
+    updates.siteSettings = data.siteOverrides;
+    needsUpdate = true;
+  }
+
+  // Existing users who had a defaultAccount set: enable global for them
+  // so their behavior doesn't change after the update
+  if (data.defaultAccount !== undefined && data.globalAccountEnabled === undefined) {
+    updates.globalAccountEnabled = true;
+    needsUpdate = true;
+  }
+
+  if (needsUpdate) {
+    await chrome.storage.sync.set(updates);
+    // Clean up legacy key
+    if (data.siteOverrides) {
+      await chrome.storage.sync.remove('siteOverrides');
+    }
+    console.log('[G-Account Switcher] Migrated storage:', Object.keys(updates));
+  }
+}
+
 // ========== INITIALIZATION ==========
 
 /**
@@ -52,8 +88,9 @@ async function initialize() {
     // Apply declarativeNetRequest rules
     await applyRules(
       currentSettings.defaultAccount,
-      currentSettings.siteOverrides,
-      currentSettings.enabled
+      currentSettings.siteSettings,
+      currentSettings.enabled,
+      currentSettings.globalAccountEnabled
     );
 
     // Update badge
@@ -75,8 +112,15 @@ function updateBadge(settings) {
     return;
   }
 
-  chrome.action.setBadgeText({ text: settings.defaultAccount.toString() });
-  chrome.action.setBadgeBackgroundColor({ color: '#1a73e8' });
+  if (settings.globalAccountEnabled) {
+    chrome.action.setBadgeText({ text: settings.defaultAccount.toString() });
+    chrome.action.setBadgeBackgroundColor({ color: '#1a73e8' });
+  } else {
+    // Per-site only mode — show number of configured sites
+    const siteCount = Object.keys(settings.siteSettings || {}).length;
+    chrome.action.setBadgeText({ text: siteCount > 0 ? siteCount.toString() : '' });
+    chrome.action.setBadgeBackgroundColor({ color: '#34a853' });
+  }
 }
 
 /**
@@ -88,7 +132,8 @@ chrome.storage.onChanged.addListener(async (changes, areaName) => {
   const relevantKeys = [
     STORAGE_KEYS.ENABLED,
     STORAGE_KEYS.DEFAULT_ACCOUNT,
-    STORAGE_KEYS.SITE_OVERRIDES,
+    STORAGE_KEYS.GLOBAL_ACCOUNT_ENABLED,
+    STORAGE_KEYS.SITE_SETTINGS,
     STORAGE_KEYS.MODE,
   ];
 
@@ -108,8 +153,9 @@ chrome.storage.onChanged.addListener(async (changes, areaName) => {
   if (hasRelevantChange) {
     await applyRules(
       currentSettings.defaultAccount,
-      currentSettings.siteOverrides,
-      currentSettings.enabled
+      currentSettings.siteSettings,
+      currentSettings.enabled,
+      currentSettings.globalAccountEnabled
     );
     updateBadge(currentSettings);
     // Clear global state tracker so that new target accounts are instantly resynced
@@ -128,7 +174,8 @@ chrome.storage.onChanged.addListener(async (changes, areaName) => {
           activeTab.id,
           activeTab.url,
           currentSettings.defaultAccount,
-          currentSettings.siteOverrides
+          currentSettings.siteSettings,
+          currentSettings.globalAccountEnabled
         );
       }
     } catch { /* best-effort — popup already refreshes the tab */ }
@@ -169,7 +216,8 @@ chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
     tabId,
     url,
     currentSettings.defaultAccount,
-    currentSettings.siteOverrides
+    currentSettings.siteSettings,
+    currentSettings.globalAccountEnabled
   );
 });
 
@@ -203,7 +251,13 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           return;
         }
         const settings = currentSettings || await getAllSettings();
-        const switched = await applyForceSwitch(message.tabId, tab.url, settings.defaultAccount, settings.siteOverrides || {});
+        const switched = await applyForceSwitch(
+          message.tabId,
+          tab.url,
+          settings.defaultAccount,
+          settings.siteSettings || {},
+          settings.globalAccountEnabled || false
+        );
         if (!switched) {
           chrome.tabs.reload(message.tabId).catch(() => {});
         }
@@ -215,9 +269,11 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 });
 
 /**
- * On install or update: detect accounts and initialize.
+ * On install or update: migrate storage, detect accounts, and initialize.
  */
 chrome.runtime.onInstalled.addListener(async () => {
+  // Migrate legacy storage keys first
+  await migrateStorage();
   // Detect accounts on install/update (fresh detection)
   await detectAndMergeAccounts();
   await initialize();

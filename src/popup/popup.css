@@ -49,6 +49,10 @@
 
   /* Scrollbar */
   --scrollbar-thumb: #dadce0;
+
+  /* Green accent for per-site */
+  --green: #34a853;
+  --green-surface: #e6f4ea;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -91,6 +95,9 @@
     --focus-ring: rgba(138, 180, 248, 0.3);
 
     --scrollbar-thumb: #5f6368;
+
+    --green: #81c995;
+    --green-surface: #1e3a2f;
   }
 }
 
@@ -208,14 +215,6 @@ body {
   min-width: 44px;
 }
 
-.mode-section {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding-bottom: 10px;
-  border-bottom: 1px solid var(--border);
-}
-
 /* ───── Select ───── */
 .select {
   flex: 1;
@@ -305,6 +304,146 @@ body {
   background: var(--danger-surface);
 }
 
+/* ───── Current Site Panel ───── */
+.current-site-panel {
+  padding: 10px;
+  background: var(--accent-surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.current-site-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.site-icon {
+  font-size: 14px;
+}
+
+.current-site-name {
+  font-weight: 600;
+  font-size: 13px;
+  color: var(--accent);
+}
+
+.current-site-status {
+  font-size: 11px;
+  color: var(--text-secondary);
+  margin-top: 6px;
+  min-height: 14px;
+}
+
+/* ───── Icon-based account selector ───── */
+.site-account-icons {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.site-account-icon {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  padding: 6px 4px;
+  border: 2px solid transparent;
+  border-radius: 10px;
+  background: var(--bg-surface);
+  cursor: pointer;
+  transition: all 0.15s;
+  min-width: 52px;
+  position: relative;
+}
+
+.site-account-icon:hover {
+  background: var(--bg-hover);
+  border-color: var(--border-hover);
+}
+
+.site-account-icon.selected {
+  border-color: var(--accent);
+  background: var(--bg-selected);
+}
+
+.site-account-icon.selected.special-default {
+  border-color: var(--green);
+  background: var(--green-surface);
+}
+
+.site-account-icon .account-avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--accent-surface);
+  flex-shrink: 0;
+}
+
+.site-account-icon .account-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 50%;
+}
+
+.site-account-icon .account-initials {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--accent);
+  text-transform: uppercase;
+  line-height: 1;
+}
+
+.site-account-icon .account-index {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  font-size: 9px;
+  font-weight: 700;
+  color: var(--badge-text);
+  background: var(--badge-bg);
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+}
+
+.site-account-icon .icon-label {
+  font-size: 18px;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.site-account-icon .icon-caption {
+  font-size: 10px;
+  color: var(--text-secondary);
+  max-width: 56px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: center;
+}
+
+.site-account-icon.special .icon-label {
+  color: var(--text-tertiary);
+}
+
+.site-account-icon.special.selected .icon-label {
+  color: var(--accent);
+}
+
 /* ───── Account list ───── */
 .account-list {
   max-height: 200px;
@@ -336,8 +475,8 @@ body {
   flex-shrink: 0;
 }
 
-/* ───── Account avatar ───── */
-.account-avatar {
+/* ───── Account avatar (in list) ───── */
+.account-list .account-avatar {
   width: 28px;
   height: 28px;
   border-radius: 50%;
@@ -349,14 +488,14 @@ body {
   background: var(--accent-surface);
 }
 
-.account-avatar img {
+.account-list .account-avatar img {
   width: 100%;
   height: 100%;
   object-fit: cover;
   border-radius: 50%;
 }
 
-.account-initials {
+.account-list .account-initials {
   font-size: 11px;
   font-weight: 600;
   color: var(--accent);
@@ -400,36 +539,6 @@ body {
   opacity: 1;
 }
 
-/* ───── Quick Switch ───── */
-.site-icon {
-  font-size: 14px;
-  margin-right: 2px;
-}
-
-#quickSwitchSection {
-  padding: 8px 10px;
-  background: var(--accent-surface);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-}
-
-#quickSwitchSection .section-header {
-  margin-bottom: 6px;
-}
-
-#quickSwitchSection .section-title {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  font-weight: 600;
-  font-size: 12px;
-  color: var(--accent);
-}
-
-#quickSwitchSection .select {
-  background: var(--bg-surface);
-}
-
 /* ───── Empty state ───── */
 .empty-state {
   text-align: center;
@@ -467,7 +576,7 @@ body {
   font-size: 12px;
   font-weight: 500;
   color: var(--text-secondary);
-  width: 44px;
+  width: 54px;
   flex-shrink: 0;
 }
 
@@ -499,44 +608,208 @@ body {
   margin-top: 4px;
 }
 
-/* ───── Override list ───── */
-.override-list {
-  max-height: 120px;
+/* ───── Site Setting list ───── */
+.site-setting-list {
+  max-height: 180px;
   overflow-y: auto;
 }
 
-.override-item {
+.site-setting-item {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  padding: 5px 8px;
-  border-radius: 6px;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: 8px;
   font-size: 12px;
+  transition: background 0.15s;
 }
 
-.override-item:hover {
+.site-setting-item:hover {
   background: var(--bg-hover);
 }
 
-.override-site {
+.site-setting-avatar {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--accent-surface);
+}
+
+.site-setting-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 50%;
+}
+
+.site-setting-avatar .account-initials {
+  font-size: 9px;
+  font-weight: 600;
+  color: var(--accent);
+  text-transform: uppercase;
+}
+
+.site-setting-avatar.disabled {
+  background: var(--badge-bg);
+  font-size: 12px;
+}
+
+.site-setting-info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.site-setting-site {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.site-setting-account {
+  font-size: 11px;
+  color: var(--accent);
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.site-setting-account.disabled-text {
+  color: var(--text-tertiary);
+  font-style: italic;
+}
+
+.site-setting-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  opacity: 0;
+  transition: opacity 0.15s;
+  flex-shrink: 0;
+}
+
+.site-setting-item:hover .site-setting-actions {
+  opacity: 1;
+}
+
+/* Inline edit select (appears on edit click) */
+.site-setting-inline-select {
+  width: 100%;
+  padding: 3px 6px;
+  border: 1px solid var(--accent);
+  border-radius: 4px;
+  background: var(--bg-surface);
+  font-size: 11px;
+  color: var(--text-primary);
+  outline: none;
+  box-shadow: 0 0 0 2px var(--focus-ring);
+}
+
+/* ───── Global Section (collapsible) ───── */
+.global-section {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0;
+  overflow: hidden;
+}
+
+.global-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 10px;
+  cursor: pointer;
+  user-select: none;
+  transition: background 0.15s;
+}
+
+.global-header:hover {
+  background: var(--bg-hover);
+}
+
+.global-toggle-arrow {
+  font-size: 12px;
+  color: var(--text-tertiary);
+  transition: transform 0.2s;
+  width: 12px;
+}
+
+.global-toggle-arrow.expanded {
+  transform: rotate(90deg);
+}
+
+.global-status {
+  margin-left: auto;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: var(--badge-bg);
+  color: var(--badge-text);
+}
+
+.global-status.active {
+  background: var(--accent-surface);
+  color: var(--accent);
+}
+
+.global-body {
+  padding: 8px 10px 10px;
+  border-top: 1px solid var(--border);
+}
+
+.global-toggle-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.global-label {
+  font-size: 12px;
   font-weight: 500;
   color: var(--text-primary);
 }
 
-.override-arrow {
-  color: var(--text-tertiary);
-  margin: 0 6px;
-}
-
-.override-account {
-  color: var(--accent);
-  font-weight: 500;
-}
-
-.override-right {
+.global-account-row {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.global-hint {
+  font-size: 11px;
+  color: var(--text-tertiary);
+  line-height: 1.4;
+}
+
+/* ───── Mode footer ───── */
+.mode-footer {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+  opacity: 0.7;
+  transition: opacity 0.15s;
+}
+
+.mode-footer:hover {
+  opacity: 1;
 }
 
 /* ───── Status bar ───── */
@@ -571,17 +844,17 @@ body {
 
 /* ───── Scrollbar ───── */
 .account-list::-webkit-scrollbar,
-.override-list::-webkit-scrollbar {
+.site-setting-list::-webkit-scrollbar {
   width: 4px;
 }
 
 .account-list::-webkit-scrollbar-thumb,
-.override-list::-webkit-scrollbar-thumb {
+.site-setting-list::-webkit-scrollbar-thumb {
   background: var(--scrollbar-thumb);
   border-radius: 2px;
 }
 
 .account-list::-webkit-scrollbar-track,
-.override-list::-webkit-scrollbar-track {
+.site-setting-list::-webkit-scrollbar-track {
   background: transparent;
 }

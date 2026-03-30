@@ -17,7 +17,7 @@
  *     We use a TTL-based cache (domainSyncedStates) to remember the last
  *     account we redirected to, preventing infinite redirect loops.
  */
-import { GOOGLE_DOMAINS, URL_PATTERNS, OVERRIDE_DISABLED } from './constants.js';
+import { GOOGLE_DOMAINS, URL_PATTERNS, SITE_DISABLED } from './constants.js';
 
 /**
  * Anti-loop cache for domains that strip the authuser parameter.
@@ -191,10 +191,11 @@ export function buildProactiveUrl(url, domain, accountNum) {
  * @param {number} tabId
  * @param {string} url
  * @param {number} defaultAccount
- * @param {Object} siteOverrides
+ * @param {Object} siteSettings
+ * @param {boolean} globalAccountEnabled - Whether the global default is active
  * @returns {Promise<boolean>} True if a redirect was performed
  */
-export async function handleProactiveRedirect(tabId, url, defaultAccount, siteOverrides) {
+export async function handleProactiveRedirect(tabId, url, defaultAccount, siteSettings, globalAccountEnabled) {
   let host;
   try {
     host = new URL(url).hostname;
@@ -208,16 +209,21 @@ export async function handleProactiveRedirect(tabId, url, defaultAccount, siteOv
     return false;
   }
 
-  // Determine which account to use (site override or global default)
-  const hasOverride = domain.host in siteOverrides;
-  const overrideValue = hasOverride ? siteOverrides[domain.host] : undefined;
+  // Determine which account to use (site setting or global default)
+  const hasSiteSetting = domain.host in siteSettings;
+  const siteValue = hasSiteSetting ? siteSettings[domain.host] : undefined;
 
-  // If override is OVERRIDE_DISABLED, skip redirect entirely for this site
-  if (overrideValue === OVERRIDE_DISABLED) {
+  // If site setting is SITE_DISABLED, skip redirect entirely for this site
+  if (siteValue === SITE_DISABLED) {
     return false;
   }
 
-  const accountNum = hasOverride ? overrideValue : defaultAccount;
+  // If no site setting and global is disabled, skip redirect
+  if (!hasSiteSetting && !globalAccountEnabled) {
+    return false;
+  }
+
+  const accountNum = hasSiteSetting ? siteValue : defaultAccount;
 
   // Extract account number currently in the URL (pure — no cache side effects)
   const urlAccount = extractAccountFromUrl(url);
@@ -303,15 +309,18 @@ export function clearSyncedState(host) {
  * Force switch the URL for a tab, modifying an existing account parameter if present.
  * Used for manual user-initiated switches from the popup.
  */
-export async function applyForceSwitch(tabId, url, targetAccount, siteOverrides) {
+export async function applyForceSwitch(tabId, url, targetAccount, siteSettings, globalAccountEnabled) {
   const domain = findMatchingDomain(url);
   if (!domain) return false;
 
-  const hasOverride = domain.host in siteOverrides;
-  const overrideValue = hasOverride ? siteOverrides[domain.host] : undefined;
-  if (overrideValue === OVERRIDE_DISABLED) return false;
+  const hasSiteSetting = domain.host in siteSettings;
+  const siteValue = hasSiteSetting ? siteSettings[domain.host] : undefined;
+  if (siteValue === SITE_DISABLED) return false;
 
-  const accountNum = hasOverride ? overrideValue : targetAccount;
+  // If no site setting and global is disabled, skip
+  if (!hasSiteSetting && !globalAccountEnabled) return false;
+
+  const accountNum = hasSiteSetting ? siteValue : targetAccount;
 
   try {
     const parsed = new URL(url);

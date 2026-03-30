@@ -1,6 +1,6 @@
 # G-Account Switcher
 
-A lightweight Manifest V3 Chrome extension that sets your default Google account across **all** Google services — Gmail, YouTube, Drive, Docs, Calendar, AI Studio, Gemini, NotebookLM, Firebase, Google Ads, Analytics, and 30+ more.
+A lightweight Manifest V3 Chrome extension that lets you assign specific Google accounts to individual Google services — Gmail, YouTube, Drive, Docs, Calendar, AI Studio, Gemini, NotebookLM, Firebase, Google Ads, Analytics, and 30+ more. Optionally set a global default across all services.
 
 ## How It Works
 
@@ -11,30 +11,41 @@ Google identifies accounts by a numeric index (0, 1, 2, ...) in URLs via two pat
 | **Path-based** `/u/X/` | `mail.google.com/mail/u/1/` | Gmail, Drive, Docs, Calendar, Photos, AI Studio, Gemini, Meet, Cloud Console |
 | **Query-based** `authuser=X` | `google.com/search?authuser=1` | Search, Maps, YouTube, NotebookLM, Analytics, Firebase, Ads, Tag Manager |
 
-This extension rewrites those indices to your selected default account using two layers:
+This extension rewrites those indices using two layers:
 
 1. **`declarativeNetRequest`** — Rewrites `/u/X/` and `authuser=X` in URLs **before** the HTTP request is made. Zero flicker, zero double-loading.
-2. **Proactive mode** — Detects bare Google URLs (without any account param) and redirects them to include your selected account.
+2. **Proactive mode** — Detects bare Google URLs (without any account param) and redirects them to include the configured account.
+
+### Per-Site First
+
+By default, the extension only activates based on **specific per-site configurations**. The global default account is optional and disabled on fresh installs. This means:
+
+- **No redirects** until you explicitly configure a site or enable the global default
+- Each Google service can use a **different account** independently
+- The global default acts as a **fallback** for unconfigured sites (when enabled)
 
 ## Features
 
-- **Global default account** — One click to set which account is used everywhere
-- **Per-site overrides** — Use account 0 for YouTube but account 3 for Gmail
-- **Quick Switch** — Context-aware popup dropdown detects the current tab's Google service and lets you switch accounts for that specific site instantly
+- **Per-site account settings** — Assign specific accounts to individual services (e.g., Account 0 for YouTube, Account 3 for Gmail). Google Search, Maps, and AI mode each get their own independent setting despite sharing the same host
+- **Icon-based account selector** — Current site panel shows clickable account avatars with profile pictures, index badges, and labels for quick switching
+- **Optional global default** — When enabled, unconfigured sites fall back to a single default account
 - **Auto-detect accounts** — Discovers logged-in account emails, names, and profile pictures via Google's ListAccounts endpoint
-- **Profile pictures** — Popup shows account avatars with initials fallback
+- **Profile pictures** — Popup shows account avatars with initials fallback across all sections
+- **Inline editing** — Change site account assignments directly in the site settings list without deleting and re-adding
 - **Auto-refresh** — Current tab automatically refreshes after switching accounts for immediate effect
 - **Cookie-based account sync** — Automatically refreshes the account list when you sign in/out of Google (monitors `SID`, `SSID`, `HSID`, `LSID`, `ACCOUNT_CHOOSER` cookies)
 - **Fast detection** — Reuses existing Google/YouTube tabs for account detection instead of creating new tabs; falls back to cached accounts when no tabs are available
 - **Manual account management** — Add accounts with custom labels (Work, Personal, etc.)
 - **gmail.com redirect** — `gmail.com` and `www.gmail.com` are redirected to `mail.google.com/mail/u/X/`
+- **Per-site disable** — Disable redirection entirely for specific sites
 - **Two modes:**
-  - **Proactive** (default) — Forces your account on ALL Google URLs, even bare ones
+  - **Proactive** (default) — Forces configured account on ALL matching Google URLs, even bare ones
   - **Passive** — Only rewrites URLs that already have `/u/X/` or `authuser=X`
 - **Dark / Light theme** — Automatically matches your system or browser color scheme via `prefers-color-scheme`
 - **YouTube loop prevention** — Domain-aware cooldown prevents infinite redirect loops on services (like YouTube) that strip `authuser` after processing it
-- **30+ Google domains covered** — Including all Workspace, Developer, Ads, and AI services
+- **30+ Google domains covered** — Including all Workspace, Developer, Ads, and AI services. Sub-service disambiguation for Maps (`/maps` path) and AI mode (`udm=50` query param) on `www.google.com`
 - **Near-zero performance impact** — `declarativeNetRequest` rules run in the browser's network layer, not in JavaScript
+- **Migration safe** — Existing users upgrading from v2 automatically have their settings migrated and global default enabled to preserve behavior
 
 ## Installation
 
@@ -48,10 +59,11 @@ This extension rewrites those indices to your selected default account using two
 
 1. Click the extension icon in the toolbar
 2. Click **🔍 Detect** to auto-discover your logged-in Google accounts (with profile pictures)
-3. Select your desired default account by clicking on it — the current tab auto-refreshes
-4. Use **Quick Switch** (appears when you're on a Google site) to set per-site overrides directly
-5. (Optional) Add more per-site overrides manually in the "Site Overrides" section
-6. Choose between **Proactive** and **Passive** mode
+3. Navigate to a Google site — the **Current Site** panel appears with clickable account avatars
+4. Click an avatar to assign that account to the current site — the page auto-refreshes
+5. Configure additional sites via the **Site Settings** section (click **+ Add** or use inline editing)
+6. (Optional) Expand the **Global Default** section and enable it to set a fallback account for all unconfigured sites
+7. Choose between **Proactive** and **Passive** mode at the bottom of the popup
 
 ## File Structure
 
@@ -59,9 +71,9 @@ This extension rewrites those indices to your selected default account using two
 G-Account-Switcher/
 ├── manifest.json                 # MV3 manifest
 ├── src/
-│   ├── background.js             # Service worker: rules, cookies, messages
+│   ├── background.js             # Service worker: rules, cookies, messages, migration
 │   ├── lib/
-│   │   ├── constants.js          # 30+ Google domain mappings, storage keys
+│   │   ├── constants.js          # 30+ Google domain mappings, siteKey/queryMatch config, storage keys
 │   │   ├── storage.js            # chrome.storage.sync helpers
 │   │   ├── accounts.js           # Account detection (reuses existing tabs)
 │   │   ├── rules.js              # declarativeNetRequest rule generator
@@ -69,7 +81,7 @@ G-Account-Switcher/
 │   ├── popup/
 │   │   ├── popup.html            # Extension popup UI
 │   │   ├── popup.css             # Popup styles (light/dark theme)
-│   │   └── popup.js              # Popup controller (quick switch, avatars)
+│   │   └── popup.js              # Popup controller (icon selector, inline editing)
 │   └── icons/
 │       ├── icon16.png
 │       ├── icon32.png
@@ -95,13 +107,18 @@ G-Account-Switcher/
 
 **Workspace:** Gmail, Google Drive, Google Docs, Sheets, Slides, Forms, Drawings, Google Calendar, Google Contacts, Google Keep, Google Tasks, Google Chat, Google Meet, Google Groups.
 
-**AI:** Gemini, Google AI Studio, NotebookLM.
+**AI:** Gemini, Google AI Studio, NotebookLM, Google AI Mode (Search with `udm=50`).
 
 **Developer & Cloud:** Google Cloud Console, Firebase Console, Google Tag Manager, Looker Studio, Google Search Console.
 
 **Ads & Monetization:** Google Ads, AdSense, AdMob.
 
 **Other:** YouTube, YouTube Studio, Google Search, Google Maps, Google Photos, Google Translate, Google Play Store, Google Admin Console, My Account, Google Analytics, Google Notifications.
+
+**Sub-service disambiguation on `www.google.com`:**
+- `www.google.com` — Google Search (generic fallback)
+- `www.google.com/maps` — Google Maps (matched by `/maps` path prefix, stored as `www.google.com/maps`)
+- `www.google.com/ai` — AI Mode (matched by `udm=50` query parameter, stored as `www.google.com/ai`)
 
 **Excluded:**
 - `accounts.google.com` — Login/logout flows are never modified.
@@ -125,8 +142,22 @@ Instead of always creating a new tab (slow and disruptive), the extension:
 ### Cookie-Based Auto-Refresh
 The background service worker monitors `chrome.cookies.onChanged` for Google auth cookies (`SID`, `SSID`, `HSID`, `LSID`, `ACCOUNT_CHOOSER`). When these change (sign-in, sign-out, or account switch), account detection runs automatically after a 2-second debounce to let all cookie changes settle.
 
+### Sub-Service Disambiguation (siteKey / queryMatch)
+Multiple Google services share `www.google.com` but need independent account settings. The extension handles this through two disambiguation mechanisms:
+
+- **`pathPrefix`** — Matches URL paths (e.g., `/maps` for Google Maps). The entry includes a `siteKey` property (`www.google.com/maps`) so it gets its own slot in site settings storage.
+- **`queryMatch`** — Matches a specific query parameter key/value pair (e.g., `udm=50` for AI mode). The entry includes a `siteKey` (`www.google.com/ai`) and `queryMatch: { key: 'udm', value: '50' }`. In `declarativeNetRequest`, two regex rules are generated per queryMatch entry to handle the parameter appearing before or after `authuser=` in any order. queryMatch rules have higher priority than generic query rules for the same host.
+
+The `getSiteKey()` helper resolves each domain entry to its storage key (`domain.siteKey || domain.host`), ensuring all code paths — rules, proactive mode, and the popup UI — use the correct key for lookups.
+
 ### YouTube Redirect Loop Prevention
-YouTube processes the `authuser` parameter, switches the session via cookies, then strips the parameter and reloads. This would cause the extension to re-add the parameter in an infinite loop. To prevent this, a domain-aware cooldown map suppresses re-redirects to the same host within a 10-second window.
+YouTube processes the `authuser` parameter, switches the session via cookies, then strips the parameter and reloads. This would cause the extension to re-add the parameter in an infinite loop. To prevent this, a domain-aware cooldown map suppresses re-redirects to the same host.
+
+### Storage Migration (v2 → v3)
+On install/update, the background service worker migrates legacy storage keys:
+- `siteOverrides` → `siteSettings` (data preserved)
+- Existing users with a `defaultAccount` set automatically get `globalAccountEnabled: true` to preserve their existing behavior
+- New installs start with `globalAccountEnabled: false` (per-site only)
 
 ## License
 

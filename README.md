@@ -8,8 +8,8 @@ Google identifies accounts by a numeric index (0, 1, 2, ...) in URLs via two pat
 
 | Pattern | Example | Services |
 |---------|---------|----------|
-| **Path-based** `/u/X/` | `mail.google.com/mail/u/1/` | Gmail, Drive, Docs, Calendar, Photos, AI Studio, Gemini, Meet, Cloud Console |
-| **Query-based** `authuser=X` | `google.com/search?authuser=1` | Search, Maps, YouTube, NotebookLM, Analytics, Firebase, Ads, Tag Manager |
+| **Path-based** `/u/X/` | `mail.google.com/mail/u/1/` | Gmail, Drive, Calendar, Photos, AI Studio, Gemini, Meet, Cloud Console |
+| **Query-based** `authuser=X` | `google.com/search?authuser=1` | Search, Maps, Docs, Sheets, Slides, Forms, Drawings, YouTube, NotebookLM, Analytics, Firebase, Ads, Tag Manager |
 
 This extension rewrites those indices using two layers:
 
@@ -26,7 +26,7 @@ By default, the extension only activates based on **specific per-site configurat
 
 ## Features
 
-- **Per-site account settings** — Assign specific accounts to individual services (e.g., Account 0 for YouTube, Account 3 for Gmail). Google Search, Maps, and AI mode each get their own independent setting despite sharing the same host
+- **Per-site account settings** — Assign specific accounts to individual services (e.g., Account 0 for YouTube, Account 3 for Gmail). Each Docs suite service (Docs, Sheets, Slides, Forms, Drawings) gets its own independent setting, as do Search, Maps, and AI mode on `www.google.com`
 - **Icon-based account selector** — Current site panel shows clickable account avatars with profile pictures, index badges, and labels for quick switching
 - **Optional global default** — When enabled, unconfigured sites fall back to a single default account
 - **Auto-detect accounts** — Discovers logged-in account emails, names, and profile pictures via Google's ListAccounts endpoint
@@ -42,8 +42,8 @@ By default, the extension only activates based on **specific per-site configurat
   - **Proactive** (default) — Forces configured account on ALL matching Google URLs, even bare ones
   - **Passive** — Only rewrites URLs that already have `/u/X/` or `authuser=X`
 - **Dark / Light theme** — Automatically matches your system or browser color scheme via `prefers-color-scheme`
-- **YouTube loop prevention** — Domain-aware cooldown prevents infinite redirect loops on services (like YouTube) that strip `authuser` after processing it
-- **30+ Google domains covered** — Including all Workspace, Developer, Ads, and AI services. Sub-service disambiguation for Maps (`/maps` path) and AI mode (`udm=50` query param) on `www.google.com`
+- **Param-strip loop prevention** — Domain-aware cooldown prevents infinite redirect loops on services (YouTube, Play Store, Docs) that strip `authuser` after processing it
+- **30+ Google domains covered** — Including all Workspace, Developer, Ads, and AI services. Sub-service disambiguation for Maps and AI mode on `www.google.com`, and all Docs suite services on `docs.google.com`
 - **Near-zero performance impact** — `declarativeNetRequest` rules run in the browser's network layer, not in JavaScript
 - **Migration safe** — Existing users upgrading from v2 automatically have their settings migrated and global default enabled to preserve behavior
 
@@ -105,7 +105,7 @@ G-Account-Switcher/
 
 ## Covered Services
 
-**Workspace:** Gmail, Google Drive, Google Docs, Sheets, Slides, Forms, Drawings, Google Calendar, Google Contacts, Google Keep, Google Tasks, Google Chat, Google Meet, Google Groups.
+**Workspace:** Gmail, Google Drive, Google Docs, Sheets, Slides, Drawings, Google Calendar, Google Contacts, Google Keep, Google Tasks, Google Chat, Google Meet, Google Groups, Google Forms.
 
 **AI:** Gemini, Google AI Studio, NotebookLM, Google AI Mode (Search with `udm=50`).
 
@@ -118,7 +118,17 @@ G-Account-Switcher/
 **Sub-service disambiguation on `www.google.com`:**
 - `www.google.com` — Google Search (generic fallback)
 - `www.google.com/maps` — Google Maps (matched by `/maps` path prefix, stored as `www.google.com/maps`)
-- `www.google.com/ai` — AI Mode (matched by `udm=50` query parameter, stored as `www.google.com/ai`)
+- `www.google.com/ai` — AI Mode (matched by `udm=50` query parameter, stored as `www.google.com/aimode`)
+
+**Sub-service disambiguation on `docs.google.com`:**
+- `docs.google.com` — Generic fallback (path-based `/u/X/`)
+- `docs.google.com/document` — Google Docs (uses `?authuser=X`, stored as `docs.google.com/document`)
+- `docs.google.com/spreadsheets` — Google Sheets (uses `?authuser=X`, stored as `docs.google.com/spreadsheets`)
+- `docs.google.com/presentation` — Google Slides (uses `?authuser=X`, stored as `docs.google.com/presentation`)
+- `docs.google.com/forms` — Google Forms (uses `?authuser=X`, stored as `docs.google.com/forms`)
+- `docs.google.com/drawings` — Google Drawings (uses `?authuser=X`, stored as `docs.google.com/drawings`)
+
+All Docs suite services strip the `authuser` parameter after reading it, so they use the anti-loop TTL cache (like YouTube and Play Store. Difference is, they don't store account switch cookies.).
 
 **Excluded:**
 - `accounts.google.com` — Login/logout flows are never modified.
@@ -143,15 +153,17 @@ Instead of always creating a new tab (slow and disruptive), the extension:
 The background service worker monitors `chrome.cookies.onChanged` for Google auth cookies (`SID`, `SSID`, `HSID`, `LSID`, `ACCOUNT_CHOOSER`). When these change (sign-in, sign-out, or account switch), account detection runs automatically after a 2-second debounce to let all cookie changes settle.
 
 ### Sub-Service Disambiguation (siteKey / queryMatch)
-Multiple Google services share `www.google.com` but need independent account settings. The extension handles this through two disambiguation mechanisms:
+Multiple Google services share the same host but need independent account settings. The extension handles this through two disambiguation mechanisms:
 
-- **`pathPrefix`** — Matches URL paths (e.g., `/maps` for Google Maps). The entry includes a `siteKey` property (`www.google.com/maps`) so it gets its own slot in site settings storage.
-- **`queryMatch`** — Matches a specific query parameter key/value pair (e.g., `udm=50` for AI mode). The entry includes a `siteKey` (`www.google.com/ai`) and `queryMatch: { key: 'udm', value: '50' }`. In `declarativeNetRequest`, two regex rules are generated per queryMatch entry to handle the parameter appearing before or after `authuser=` in any order. queryMatch rules have higher priority than generic query rules for the same host.
+- **`pathPrefix`** — Matches URL paths (e.g., `/maps` for Google Maps on `www.google.com`, `/forms` for Google Forms on `docs.google.com`). When a `siteKey` is set (e.g., `docs.google.com/forms`), the entry gets its own slot in site settings storage, independent from the host's catchall entry.
+- **`queryMatch`** — Matches a specific query parameter key/value pair (e.g., `udm=50` for AI mode). The entry includes a `siteKey` (`www.google.com/aimode`) and `queryMatch: { key: 'udm', value: '50' }`. In `declarativeNetRequest`, two regex rules are generated per queryMatch entry to handle the parameter appearing before or after `authuser=` in any order. queryMatch rules have higher priority than generic query rules for the same host.
 
-The `getSiteKey()` helper resolves each domain entry to its storage key (`domain.siteKey || domain.host`), ensuring all code paths — rules, proactive mode, and the popup UI — use the correct key for lookups.
+Domain matching follows a unified priority chain across all types: (1) queryMatch entries, (2) specific pathPrefix matches (longest wins, regardless of path vs query type), (3) catchall entries (empty pathPrefix). This ensures a query-type entry with `/forms` pathPrefix is chosen over a path-type catchall with empty pathPrefix.
 
-### YouTube Redirect Loop Prevention
-YouTube processes the `authuser` parameter, switches the session via cookies, then strips the parameter and reloads. This would cause the extension to re-add the parameter in an infinite loop. To prevent this, a domain-aware cooldown map suppresses re-redirects to the same host.
+The `getSiteKey()` helper resolves each domain entry to its storage key (`domain.siteKey || domain.host`), ensuring all code paths — rules, proactive mode, popup UI, and anti-loop cache — use the correct key for lookups.
+
+### Param-Strip Redirect Loop Prevention
+Some Google services (YouTube, Play Store, Docs suite) process the `authuser` parameter, switch the session via cookies (For Youtube and Play Store only), then strip the parameter and reload. This would cause the extension to re-add the parameter in an infinite loop. To prevent this, a TTL-based cooldown cache (`domainSyncedStates`) records the last redirected account per site key, suppressing re-redirects within the cooldown window. The cache is keyed by `getSiteKey(domain)` to prevent collisions between services sharing the same host (e.g., Forms vs Docs on `docs.google.com`).
 
 ### Storage Migration (v2 → v3)
 On install/update, the background service worker migrates legacy storage keys:

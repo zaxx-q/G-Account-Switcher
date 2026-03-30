@@ -60,16 +60,14 @@ export const GOOGLE_DOMAINS = [
   // Play Store (uses ?authuser=X, strips it after load like YouTube)
   { host: 'play.google.com',           type: 'query', stripsParam: true },
 
-  // Google Docs suite — /u/X/ comes after the document type
-  { host: 'docs.google.com',           type: 'path', pathPrefix: '/document' },
-  { host: 'docs.google.com',           type: 'path', pathPrefix: '/spreadsheets' },
-  { host: 'docs.google.com',           type: 'path', pathPrefix: '/presentation' },
-  { host: 'docs.google.com',           type: 'path', pathPrefix: '/drawings' },
-  { host: 'docs.google.com',           type: 'path', pathPrefix: '' },
-
-  // Google Forms — uses ?authuser=X (strips it after reading, like YouTube)
-  // Must be separate from Docs because Forms rejects /u/X/ path segments.
-  { host: 'docs.google.com',           type: 'query', pathPrefix: '/forms', siteKey: 'docs.google.com/forms', stripsParam: true },
+  // Google Docs suite — each service uses ?authuser=X (strips it after reading).
+  // Each gets its own siteKey for independent per-site account settings.
+  { host: 'docs.google.com',           type: 'query', pathPrefix: '/document',     siteKey: 'docs.google.com/document',     stripsParam: true },
+  { host: 'docs.google.com',           type: 'query', pathPrefix: '/spreadsheets', siteKey: 'docs.google.com/spreadsheets', stripsParam: true },
+  { host: 'docs.google.com',           type: 'query', pathPrefix: '/presentation', siteKey: 'docs.google.com/presentation', stripsParam: true },
+  { host: 'docs.google.com',           type: 'query', pathPrefix: '/forms',        siteKey: 'docs.google.com/forms',        stripsParam: true },
+  { host: 'docs.google.com',           type: 'query', pathPrefix: '/drawings',     siteKey: 'docs.google.com/drawings',     stripsParam: true },
+  { host: 'docs.google.com',           type: 'path', pathPrefix: '' },  // Docs homepage fallback (supports /u/X/)
 
   // ── Query-based domains (authuser=X in query string) ──
 

@@ -17,7 +17,7 @@
  *     We use a TTL-based cache (domainSyncedStates) to remember the last
  *     account we redirected to, preventing infinite redirect loops.
  */
-import { GOOGLE_DOMAINS, URL_PATTERNS, SITE_DISABLED } from './constants.js';
+import { GOOGLE_DOMAINS, URL_PATTERNS, SITE_DISABLED, getSiteKey } from './constants.js';
 
 /**
  * Anti-loop cache for domains that strip the authuser parameter.
@@ -110,17 +110,25 @@ function findMatchingDomain(url) {
     }
   }
 
-  // Check query-based domains (also supports pathPrefix matching)
+  // Check query-based domains (also supports pathPrefix and queryMatch matching)
   const queryMatches = matches.filter((d) => d.type === 'query');
   if (queryMatches.length > 0) {
+    // First, check for queryMatch entries (e.g., udm=50 for AI mode)
+    const withQueryMatch = queryMatches.filter((d) => {
+      if (!d.queryMatch) return false;
+      const pathOk = !d.pathPrefix || parsed.pathname.startsWith(d.pathPrefix);
+      return pathOk && parsed.searchParams.get(d.queryMatch.key) === d.queryMatch.value;
+    });
+    if (withQueryMatch.length > 0) return withQueryMatch[0];
+
     // Prefer entries with pathPrefix that match the current path
     const withPrefix = queryMatches
-      .filter((d) => d.pathPrefix && parsed.pathname.startsWith(d.pathPrefix))
+      .filter((d) => d.pathPrefix && !d.queryMatch && parsed.pathname.startsWith(d.pathPrefix))
       .sort((a, b) => (b.pathPrefix || '').length - (a.pathPrefix || '').length);
     if (withPrefix.length > 0) return withPrefix[0];
 
-    // Fall back to entries without pathPrefix
-    const withoutPrefix = queryMatches.find((d) => !d.pathPrefix);
+    // Fall back to entries without pathPrefix or queryMatch
+    const withoutPrefix = queryMatches.find((d) => !d.pathPrefix && !d.queryMatch);
     if (withoutPrefix) return withoutPrefix;
   }
 
@@ -210,8 +218,9 @@ export async function handleProactiveRedirect(tabId, url, defaultAccount, siteSe
   }
 
   // Determine which account to use (site setting or global default)
-  const hasSiteSetting = domain.host in siteSettings;
-  const siteValue = hasSiteSetting ? siteSettings[domain.host] : undefined;
+  const key = getSiteKey(domain);
+  const hasSiteSetting = key in siteSettings;
+  const siteValue = hasSiteSetting ? siteSettings[key] : undefined;
 
   // If site setting is SITE_DISABLED, skip redirect entirely for this site
   if (siteValue === SITE_DISABLED) {
@@ -313,8 +322,9 @@ export async function applyForceSwitch(tabId, url, targetAccount, siteSettings, 
   const domain = findMatchingDomain(url);
   if (!domain) return false;
 
-  const hasSiteSetting = domain.host in siteSettings;
-  const siteValue = hasSiteSetting ? siteSettings[domain.host] : undefined;
+  const key = getSiteKey(domain);
+  const hasSiteSetting = key in siteSettings;
+  const siteValue = hasSiteSetting ? siteSettings[key] : undefined;
   if (siteValue === SITE_DISABLED) return false;
 
   // If no site setting and global is disabled, skip

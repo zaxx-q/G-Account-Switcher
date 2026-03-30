@@ -5,7 +5,7 @@
  * via icon-based avatar selector, site settings management, account
  * detection/management, collapsible global default section, and mode switching.
  */
-import { GOOGLE_DOMAINS, STORAGE_KEYS, MAX_ACCOUNT_INDEX, SITE_DISABLED } from '../lib/constants.js';
+import { GOOGLE_DOMAINS, STORAGE_KEYS, MAX_ACCOUNT_INDEX, SITE_DISABLED, getSiteKey } from '../lib/constants.js';
 import { getStorage, setStorage } from '../lib/storage.js';
 
 // ─── DOM References ───
@@ -114,14 +114,25 @@ function findCurrentSiteDomain(url) {
       }
     }
 
-    // Query-based match
+    // Query-based match (supports pathPrefix and queryMatch)
     const queryMatches = matches.filter((d) => d.type === 'query');
     if (queryMatches.length > 0) {
+      // First, check for queryMatch entries (e.g., udm=50 for AI mode)
+      const withQueryMatch = queryMatches.filter((d) => {
+        if (!d.queryMatch) return false;
+        const pathOk = !d.pathPrefix || parsed.pathname.startsWith(d.pathPrefix);
+        return pathOk && parsed.searchParams.get(d.queryMatch.key) === d.queryMatch.value;
+      });
+      if (withQueryMatch.length > 0) return withQueryMatch[0];
+
+      // Prefer entries with pathPrefix that match the current path
       const withPrefix = queryMatches
-        .filter((d) => d.pathPrefix && parsed.pathname.startsWith(d.pathPrefix))
+        .filter((d) => d.pathPrefix && !d.queryMatch && parsed.pathname.startsWith(d.pathPrefix))
         .sort((a, b) => (b.pathPrefix || '').length - (a.pathPrefix || '').length);
       if (withPrefix.length > 0) return withPrefix[0];
-      return queryMatches.find((d) => !d.pathPrefix) || queryMatches[0];
+
+      // Fall back to entries without pathPrefix or queryMatch
+      return queryMatches.find((d) => !d.pathPrefix && !d.queryMatch) || queryMatches[0];
     }
 
     return null;
@@ -160,13 +171,12 @@ function renderCurrentSite() {
   currentSiteSection.style.display = '';
 
   // Display site name
-  const siteLabel = domain.pathPrefix
-    ? `${domain.host}${domain.pathPrefix}`
-    : domain.host;
+  const key = getSiteKey(domain);
+  const siteLabel = key;
   currentSiteName.textContent = siteLabel;
 
   // Determine current selection
-  const currentSetting = currentSettings.siteSettings?.[domain.host];
+  const currentSetting = currentSettings.siteSettings?.[key];
   const accounts = currentSettings.accounts || [];
 
   // Build icon row
@@ -200,7 +210,7 @@ function renderCurrentSite() {
   siteAccountIconsEl.appendChild(disableIcon);
 
   // Status line
-  updateCurrentSiteStatusText(domain.host, currentSetting, accounts);
+  updateCurrentSiteStatusText(key, currentSetting, accounts);
 }
 
 /**
@@ -305,24 +315,25 @@ async function handleCurrentSiteSelection(accountIndex) {
   const domain = findCurrentSiteDomain(currentTab.url);
   if (!domain) return;
 
+  const key = getSiteKey(domain);
   const siteSettings = { ...(currentSettings.siteSettings || {}) };
   let shouldRefresh = true;
 
   if (accountIndex === null) {
     // Remove site setting — use default
-    delete siteSettings[domain.host];
-    showStatus(`Removed setting for ${domain.host}`, 'info');
+    delete siteSettings[key];
+    showStatus(`Removed setting for ${key}`, 'info');
   } else if (accountIndex === SITE_DISABLED) {
     // Disable redirection
-    siteSettings[domain.host] = SITE_DISABLED;
-    showStatus(`Redirection disabled for ${domain.host}`, 'info');
+    siteSettings[key] = SITE_DISABLED;
+    showStatus(`Redirection disabled for ${key}`, 'info');
     shouldRefresh = false;
   } else {
     // Set specific account
-    siteSettings[domain.host] = accountIndex;
+    siteSettings[key] = accountIndex;
     const acc = currentSettings.accounts?.find((a) => a.index === accountIndex);
     const label = acc?.label || acc?.email || `Account ${accountIndex}`;
-    showStatus(`${domain.host} → ${label}`, 'success');
+    showStatus(`${key} → ${label}`, 'success');
   }
 
   currentSettings.siteSettings = siteSettings;
@@ -735,19 +746,19 @@ async function removeSiteSetting(host) {
 function populateSettingSites() {
   settingSiteSelect.innerHTML = '';
 
-  // Get unique non-excluded hosts
-  const hosts = [...new Set(
+  // Get unique non-excluded site keys
+  const keys = [...new Set(
     GOOGLE_DOMAINS
       .filter((d) => d.type !== 'excluded')
-      .map((d) => d.host)
+      .map((d) => getSiteKey(d))
   )];
 
-  hosts.forEach((host) => {
+  keys.forEach((key) => {
     const option = document.createElement('option');
-    option.value = host;
-    option.textContent = host;
+    option.value = key;
+    option.textContent = key;
     // Disable if already has a setting
-    if (currentSettings.siteSettings && host in currentSettings.siteSettings) {
+    if (currentSettings.siteSettings && key in currentSettings.siteSettings) {
       option.disabled = true;
       option.textContent += ' (configured)';
     }

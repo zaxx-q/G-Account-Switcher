@@ -9,14 +9,16 @@
  *   501–1000: Per-site rules (higher priority)
  *   1001–1010: Special-case redirect rules (gmail.com → mail.google.com)
  */
-import { GOOGLE_DOMAINS, SITE_DISABLED } from './constants.js';
+import { GOOGLE_DOMAINS, SITE_DISABLED, getSiteKey } from './constants.js';
 
 const GLOBAL_RULE_BASE = 1;
 const SITE_RULE_BASE = 501;
 const SPECIAL_RULE_BASE = 1001;
 const GLOBAL_PRIORITY = 1;
-const SITE_PRIORITY = 2;
-const SPECIAL_PRIORITY = 3;
+const GLOBAL_QUERYMATCH_PRIORITY = 2;
+const SITE_PRIORITY = 3;
+const SITE_QUERYMATCH_PRIORITY = 4;
+const SPECIAL_PRIORITY = 5;
 
 /**
  * Escape a string for use in a regex pattern.
@@ -85,6 +87,73 @@ function buildQueryRule(id, priority, host, accountNum, pathPrefix = '') {
 }
 
 /**
+ * Build query-match redirect rules for domains that require a specific
+ * query parameter to be present (e.g., udm=50 for AI mode).
+ *
+ * Generates TWO rules per entry because the query-match parameter can appear
+ * either before or after the authuser= parameter in the URL:
+ *
+ *   Pattern A (queryMatch before authuser):
+ *     ?udm=50&authuser=3      → rewrite authuser
+ *     ?q=test&udm=50&authuser=3 → rewrite authuser
+ *
+ *   Pattern B (queryMatch after authuser):
+ *     ?authuser=3&udm=50      → rewrite authuser
+ *     ?authuser=3&q=test&udm=50 → rewrite authuser
+ *
+ * These rules must have HIGHER priority than the generic query rules for the
+ * same host, so when both match, the queryMatch rule wins.
+ *
+ * @param {number} startId - First rule ID (uses startId and startId+1)
+ * @param {number} priority - Rule priority
+ * @param {string} host - Domain host
+ * @param {number} accountNum - Target account index
+ * @param {string} qmKey - Query parameter key (e.g., 'udm')
+ * @param {string} qmValue - Query parameter value (e.g., '50')
+ * @param {string} [pathPrefix=''] - Optional path prefix
+ * @returns {Array} Array of two redirect rules
+ */
+function buildQueryMatchRules(startId, priority, host, accountNum, qmKey, qmValue, pathPrefix = '') {
+  const escapedHost = escapeRegex(host);
+  const escapedPrefix = pathPrefix ? escapeRegex(pathPrefix) : '';
+  const escapedKey = escapeRegex(qmKey);
+  const escapedVal = escapeRegex(qmValue);
+
+  return [
+    // Pattern A: queryMatch param appears before authuser
+    // e.g., ?udm=50&authuser=3 or ?q=test&udm=50&other=1&authuser=3
+    {
+      id: startId,
+      priority,
+      action: {
+        type: 'redirect',
+        redirect: { regexSubstitution: `\\1${accountNum}\\2` },
+      },
+      condition: {
+        regexFilter: `^(https?://${escapedHost}${escapedPrefix}.*[?&]${escapedKey}=${escapedVal}&(?:.*&)?authuser=)\\d+(.*)$`,
+        requestDomains: [host],
+        resourceTypes: ['main_frame', 'sub_frame'],
+      },
+    },
+    // Pattern B: queryMatch param appears after authuser
+    // e.g., ?authuser=3&udm=50 or ?authuser=3&other=1&udm=50
+    {
+      id: startId + 1,
+      priority,
+      action: {
+        type: 'redirect',
+        redirect: { regexSubstitution: `\\1${accountNum}\\2` },
+      },
+      condition: {
+        regexFilter: `^(https?://${escapedHost}${escapedPrefix}.*[?&]authuser=)\\d+((?:.*&)${escapedKey}=${escapedVal}(?:[&#].*|$))$`,
+        requestDomains: [host],
+        resourceTypes: ['main_frame', 'sub_frame'],
+      },
+    },
+  ];
+}
+
+/**
  * Build special-case redirect rules for gmail.com → mail.google.com.
  *
  * Gmail has shortcut domains (gmail.com, www.gmail.com) that should
@@ -146,8 +215,9 @@ export function generateRules(defaultAccount, siteSettings = {}, enabled = true,
       continue;
     }
 
-    const hasSiteSetting = domain.host in siteSettings;
-    const siteValue = hasSiteSetting ? siteSettings[domain.host] : undefined;
+    const key = getSiteKey(domain);
+    const hasSiteSetting = key in siteSettings;
+    const siteValue = hasSiteSetting ? siteSettings[key] : undefined;
 
     // If site setting is SITE_DISABLED, skip rule generation for this domain
     // (no redirect rule = no account rewriting = Google's default behavior)
@@ -162,6 +232,13 @@ export function generateRules(defaultAccount, siteSettings = {}, enabled = true,
         rules.push(
           buildPathRule(siteId++, SITE_PRIORITY, domain.host, domain.pathPrefix, accountNum)
         );
+      } else if (domain.type === 'query' && domain.queryMatch) {
+        // queryMatch rule: needs 2 rules (param before/after authuser) at higher priority
+        rules.push(
+          ...buildQueryMatchRules(siteId, SITE_QUERYMATCH_PRIORITY, domain.host, accountNum,
+            domain.queryMatch.key, domain.queryMatch.value, domain.pathPrefix || '')
+        );
+        siteId += 2;
       } else if (domain.type === 'query') {
         rules.push(
           buildQueryRule(siteId++, SITE_PRIORITY, domain.host, accountNum, domain.pathPrefix || '')
@@ -173,6 +250,13 @@ export function generateRules(defaultAccount, siteSettings = {}, enabled = true,
         rules.push(
           buildPathRule(globalId++, GLOBAL_PRIORITY, domain.host, domain.pathPrefix, defaultAccount)
         );
+      } else if (domain.type === 'query' && domain.queryMatch) {
+        // queryMatch rule: needs 2 rules (param before/after authuser) at higher priority
+        rules.push(
+          ...buildQueryMatchRules(globalId, GLOBAL_QUERYMATCH_PRIORITY, domain.host, defaultAccount,
+            domain.queryMatch.key, domain.queryMatch.value, domain.pathPrefix || '')
+        );
+        globalId += 2;
       } else if (domain.type === 'query') {
         rules.push(
           buildQueryRule(globalId++, GLOBAL_PRIORITY, domain.host, defaultAccount, domain.pathPrefix || '')

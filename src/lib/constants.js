@@ -4,6 +4,11 @@
  * Each domain entry specifies:
  *   - type: 'path' (uses /u/X/) or 'query' (uses authuser=X) or 'excluded'
  *   - pathPrefix: where /u/X/ appears in the URL path (for path-type)
+ *   - queryMatch: (optional) { key, value } — requires a specific query parameter
+ *     for this entry to match (e.g., { key: 'udm', value: '50' } for AI mode).
+ *     Entries with queryMatch take precedence over generic entries for the same host.
+ *   - siteKey: (optional) custom key for siteSettings storage when multiple entries
+ *     share the same host (e.g., 'www.google.com/maps', 'www.google.com/ai').
  *   - stripsParam: (optional) true if the site strips the authuser= parameter
  *     from the URL after reading it into session cookies (e.g., YouTube, Play Store).
  *     This triggers TTL-based anti-loop caching in proactive mode.
@@ -16,6 +21,7 @@
  *   https://photos.google.com/u/3/
  *   https://www.google.com/maps?authuser=1
  *   https://www.google.com/search?q=test&authuser=3
+ *   https://www.google.com/search?q=test&udm=50&authuser=2  (AI mode)
  */
 
 // Domains where /u/X/ appears right after a known path segment
@@ -63,8 +69,14 @@ export const GOOGLE_DOMAINS = [
 
   // ── Query-based domains (authuser=X in query string) ──
 
-  // Search & Maps
-  { host: 'www.google.com',            type: 'query' },  // Search, Maps, etc.
+  // AI mode (identified by udm=50 query param; must come before generic www.google.com)
+  { host: 'www.google.com',            type: 'query', queryMatch: { key: 'udm', value: '50' }, siteKey: 'www.google.com/aimode' },
+
+  // Maps (must come before the generic www.google.com entry)
+  { host: 'www.google.com',            type: 'query', pathPrefix: '/maps', siteKey: 'www.google.com/maps' },
+
+  // Search & other www.google.com services
+  { host: 'www.google.com',            type: 'query' },
 
   // YouTube (strips authuser= after reading it into session cookies)
   { host: 'www.youtube.com',           type: 'query', stripsParam: true },
@@ -94,6 +106,20 @@ export const GOOGLE_DOMAINS = [
   { host: 'music.youtube.com',         type: 'excluded' },  // Cookie-based session, doesn't support authuser
   { host: 'accounts.google.com',       type: 'excluded' },  // Login flows — must not interfere
 ];
+
+/**
+ * Get the site-settings key for a domain entry.
+ *
+ * Most domains use just `domain.host` as the key. Domains that share a host
+ * but need independent settings (e.g., Maps vs Search on www.google.com)
+ * use an explicit `siteKey` property to disambiguate.
+ *
+ * @param {Object} domain - A GOOGLE_DOMAINS entry
+ * @returns {string} The key used in siteSettings storage
+ */
+export function getSiteKey(domain) {
+  return domain.siteKey || domain.host;
+}
 
 /**
  * Unique host patterns for manifest host_permissions and URL matching.

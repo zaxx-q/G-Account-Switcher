@@ -9,31 +9,28 @@
  * we handle this via chrome.tabs.onUpdated after page navigation begins.
  * This causes a brief redirect but only for bare URLs.
  *
- * Anti-loop strategy (two-tier):
- *   - Sites that KEEP the param in the URL (e.g., Google Search, Gmail):
- *     The URL itself is the source of truth. No cache needed — we just
- *     read the account from the URL on every navigation.
- *   - Sites that STRIP the param after reading it (e.g., YouTube, Play Store):
- *     We use a TTL-based cache (domainSyncedStates) to remember the last
- *     account we redirected to, preventing infinite redirect loops.
+ * Anti-loop strategy: per-tab tracking.
+ *   We record which account each tab+siteKey has been synced to.
+ *   Once a tab is synced for a given siteKey, we never redirect it again
+ *   unless the user explicitly switches accounts via the popup or settings
+ *   change (which clears all synced state).
+ *
+ *   This replaces the old TTL-based cache which would expire and cause
+ *   unwanted re-redirects (losing user progress).
  */
 import { GOOGLE_DOMAINS, URL_PATTERNS, SITE_DISABLED, getSiteKey } from './constants.js';
 
 /**
- * Anti-loop cache for domains that strip the authuser parameter.
- * Maps domain.host → { account: number, time: number }
+ * Per-tab sync tracker.
+ * Maps "tabId:siteKey" → accountNum
  *
- * Only used for domains with stripsParam: true.
- * Entries expire after ANTI_LOOP_TTL_MS to allow re-syncing on fresh navigations.
+ * Once a redirect is performed (or the URL already has the correct account),
+ * the entry persists until:
+ *   - The user switches accounts via the popup (clearSyncedState())
+ *   - The tab is closed (cleanupTab(tabId))
+ *   - Settings change (clearSyncedState())
  */
-export const domainSyncedStates = new Map();
-
-/**
- * How long (ms) to trust the anti-loop cache for param-stripping domains.
- * After this TTL, we'll re-add the param on the next bare navigation.
- * 10 seconds is enough to survive YouTube's strip-and-reload cycle.
- */
-const ANTI_LOOP_TTL_MS = 10_000;
+const tabSyncedStates = new Map();
 
 /**
  * Extract the account number from a URL, if present.
@@ -53,25 +50,34 @@ function extractAccountFromUrl(url) {
 }
 
 /**
- * Check if the anti-loop cache entry for a domain is still valid.
- * @param {string} host
- * @param {number} accountNum
- * @returns {boolean}
+ * Build the tracking key for a tab + site combination.
+ * @param {number} tabId
+ * @param {string} siteKey
+ * @returns {string}
  */
-function isSyncedCacheValid(host, accountNum) {
-  const entry = domainSyncedStates.get(host);
-  if (!entry) return false;
-  if (entry.account !== accountNum) return false;
-  return (Date.now() - entry.time) < ANTI_LOOP_TTL_MS;
+function trackingKey(tabId, siteKey) {
+  return `${tabId}:${siteKey}`;
 }
 
 /**
- * Record a sync event in the anti-loop cache (only for stripsParam domains).
- * @param {string} host
+ * Check if a tab has already been synced to the target account for a site.
+ * @param {number} tabId
+ * @param {string} siteKey
+ * @param {number} accountNum
+ * @returns {boolean}
+ */
+function isTabSynced(tabId, siteKey, accountNum) {
+  return tabSyncedStates.get(trackingKey(tabId, siteKey)) === accountNum;
+}
+
+/**
+ * Record that a tab has been synced to an account for a site.
+ * @param {number} tabId
+ * @param {string} siteKey
  * @param {number} accountNum
  */
-function recordSync(host, accountNum) {
-  domainSyncedStates.set(host, { account: accountNum, time: Date.now() });
+function recordTabSync(tabId, siteKey, accountNum) {
+  tabSyncedStates.set(trackingKey(tabId, siteKey), accountNum);
 }
 
 /**
@@ -222,10 +228,20 @@ export async function handleProactiveRedirect(tabId, url, defaultAccount, siteSe
   // ── URL already has an account identifier ──
   if (urlAccount !== null) {
     if (urlAccount === accountNum) {
-      return false; // Already on the correct account
+      // Already on the correct account — record the sync so we don't
+      // re-check on subsequent navigations within this tab+site
+      recordTabSync(tabId, key, accountNum);
+      return false;
     }
 
-    // Wrong account in URL — rewrite it to the target account
+    // Wrong account in URL — but if this tab was already synced for this
+    // site, the user must have manually switched accounts within the site
+    // (e.g., Gmail's built-in account picker). Respect their choice.
+    if (isTabSynced(tabId, key, accountNum)) {
+      return false;
+    }
+
+    // First visit with wrong account — rewrite it to the target account
     try {
       const parsed = new URL(url);
       let newUrl = null;
@@ -246,9 +262,7 @@ export async function handleProactiveRedirect(tabId, url, defaultAccount, siteSe
       }
 
       if (newUrl && newUrl !== url) {
-        if (domain.stripsParam) {
-          recordSync(getSiteKey(domain), accountNum);
-        }
+        recordTabSync(tabId, key, accountNum);
         await chrome.tabs.update(tabId, { url: newUrl });
         console.log(`[G-Account Switcher] Proactive (account mismatch): ${url} → ${newUrl}`);
         return true;
@@ -259,9 +273,10 @@ export async function handleProactiveRedirect(tabId, url, defaultAccount, siteSe
 
   // ── URL has no account identifier (bare URL) ──
 
-  // For param-stripping domains (YouTube, Play Store, Forms): check TTL cache
-  // to avoid infinite redirect loops (they strip authuser= after reading it)
-  if (domain.stripsParam && isSyncedCacheValid(getSiteKey(domain), accountNum)) {
+  // If this tab+site was already synced to the target account, skip.
+  // This prevents re-redirects on sites that strip the param (YouTube, etc.)
+  // as well as unnecessary redirects on reloads of any domain.
+  if (isTabSynced(tabId, key, accountNum)) {
     return false;
   }
 
@@ -273,9 +288,7 @@ export async function handleProactiveRedirect(tabId, url, defaultAccount, siteSe
 
   // Perform redirect
   try {
-    if (domain.stripsParam) {
-      recordSync(getSiteKey(domain), accountNum);
-    }
+    recordTabSync(tabId, key, accountNum);
     await chrome.tabs.update(tabId, { url: newUrl });
     console.log(`[G-Account Switcher] Proactive: ${url} → ${newUrl}`);
     return true;
@@ -286,13 +299,26 @@ export async function handleProactiveRedirect(tabId, url, defaultAccount, siteSe
 }
 
 /**
- * Clear the synced state for a domain so it can be re-synced if settings change.
+ * Clear synced state so tabs will be re-synced on next navigation.
+ *
+ * Called when settings change (no args → clear everything) so that
+ * the new account preferences take effect immediately.
  */
-export function clearSyncedState(host) {
-  if (host) {
-    domainSyncedStates.delete(host);
-  } else {
-    domainSyncedStates.clear();
+export function clearSyncedState() {
+  tabSyncedStates.clear();
+}
+
+/**
+ * Clean up all synced state entries for a specific tab.
+ * Called when a tab is closed.
+ * @param {number} tabId
+ */
+export function cleanupTab(tabId) {
+  const prefix = `${tabId}:`;
+  for (const key of tabSyncedStates.keys()) {
+    if (key.startsWith(prefix)) {
+      tabSyncedStates.delete(key);
+    }
   }
 }
 
@@ -347,9 +373,7 @@ export async function applyForceSwitch(tabId, url, targetAccount, siteSettings, 
     }
 
     if (changed) {
-      if (domain.stripsParam) {
-        recordSync(getSiteKey(domain), accountNum);
-      }
+      recordTabSync(tabId, key, accountNum);
       await chrome.tabs.update(tabId, { url: parsed.toString() });
       console.log(`[G-Account Switcher] Force Switch: ${url} → ${parsed.toString()}`);
       return true;

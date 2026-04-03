@@ -42,7 +42,7 @@ By default, the extension only activates based on **specific per-site configurat
   - **Proactive** (default) — Forces configured account on ALL matching Google URLs, even bare ones
   - **Passive** — Only rewrites URLs that already have `/u/X/` or `authuser=X`
 - **Dark / Light theme** — Automatically matches your system or browser color scheme via `prefers-color-scheme`
-- **Param-strip loop prevention** — Domain-aware cooldown prevents infinite redirect loops on services (YouTube, Play Store, Docs) that strip `authuser` after processing it
+- **Per-tab redirect tracking** — Redirects only fire on first visit to a domain in each tab; eliminates repeated redirects that cause lost progress on YouTube, Play Store, Docs, and other param-stripping services
 - **30+ Google domains covered** — Including all Workspace, Developer, Ads, and AI services. Sub-service disambiguation for Maps and AI mode on `www.google.com`, and all Docs suite services on `docs.google.com`
 - **Near-zero performance impact** — `declarativeNetRequest` rules run in the browser's network layer, not in JavaScript
 - **Migration safe** — Existing users upgrading from v2 automatically have their settings migrated and global default enabled to preserve behavior
@@ -128,7 +128,7 @@ G-Account-Switcher/
 - `docs.google.com/forms` — Google Forms (uses `?authuser=X`, stored as `docs.google.com/forms`)
 - `docs.google.com/drawings` — Google Drawings (uses `?authuser=X`, stored as `docs.google.com/drawings`)
 
-All Docs suite services strip the `authuser` parameter after reading it, so they use the anti-loop TTL cache (like YouTube and Play Store. Difference is, they don't store account switch cookies.).
+All Docs suite services strip the `authuser` parameter after reading it, so they rely on the per-tab sync tracker (like YouTube and Play Store).
 
 **Excluded:**
 - `accounts.google.com` — Login/logout flows are never modified.
@@ -162,8 +162,18 @@ Domain matching follows a unified priority chain across all types: (1) queryMatc
 
 The `getSiteKey()` helper resolves each domain entry to its storage key (`domain.siteKey || domain.host`), ensuring all code paths — rules, proactive mode, popup UI, and anti-loop cache — use the correct key for lookups.
 
-### Param-Strip Redirect Loop Prevention
-Some Google services (YouTube, Play Store, Docs suite) process the `authuser` parameter, switch the session via cookies (For Youtube and Play Store only), then strip the parameter and reload. This would cause the extension to re-add the parameter in an infinite loop. To prevent this, a TTL-based cooldown cache (`domainSyncedStates`) records the last redirected account per site key, suppressing re-redirects within the cooldown window. The cache is keyed by `getSiteKey(domain)` to prevent collisions between services sharing the same host (e.g., Forms vs Docs on `docs.google.com`).
+### Redirect Loop Prevention (Per-Tab Tracking)
+Some Google services (YouTube, Play Store, Docs suite) process the `authuser` parameter, switch the session via cookies (for YouTube and Play Store only), then strip the parameter and reload. Without protection, the extension would re-add the parameter in an infinite loop.
+
+To prevent this, a per-tab sync tracker (`tabSyncedStates`) records `tabId:siteKey → accountNum` after each redirect. Once a tab has been synced for a given site, no further redirects occur — regardless of how much time passes or how many in-page navigations happen. This means:
+
+- **First visit** to a Google domain in a tab → redirects to the configured account
+- **Subsequent navigations** within the same tab+domain → no redirect (even after hours)
+- **User switches account via popup** → `clearSyncedState()` wipes all entries, so the next navigation triggers a fresh redirect
+- **Tab closed** → `cleanupTab(tabId)` removes all entries for that tab to prevent memory leaks
+- **User manually switches account within a site** (e.g., Gmail's built-in account picker) → the extension respects their choice and does not force them back
+
+The tracker is keyed by `getSiteKey(domain)` combined with `tabId` to prevent collisions between services sharing the same host (e.g., Forms vs Docs on `docs.google.com`) and to provide per-tab isolation.
 
 ### Storage Migration (v2 → v3)
 On install/update, the background service worker migrates legacy storage keys:

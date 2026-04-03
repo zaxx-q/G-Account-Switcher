@@ -12,7 +12,7 @@
 import { STORAGE_KEYS } from './lib/constants.js';
 import { getAllSettings, setStorage, getStorage } from './lib/storage.js';
 import { applyRules } from './lib/rules.js';
-import { handleProactiveRedirect, applyForceSwitch, clearSyncedState } from './lib/proactive.js';
+import { handleProactiveRedirect, applyForceSwitch, clearSyncedState, cleanupTab } from './lib/proactive.js';
 import { detectAndMergeAccounts } from './lib/accounts.js';
 
 // Track current settings in memory for the tabs.onUpdated listener
@@ -219,6 +219,13 @@ chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
     currentSettings.siteSettings,
     currentSettings.globalAccountEnabled
   );
+});
+
+/**
+ * Clean up per-tab synced state when a tab is closed.
+ */
+chrome.tabs.onRemoved.addListener((tabId) => {
+  cleanupTab(tabId);
 });
 
 /**

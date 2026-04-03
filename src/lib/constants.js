@@ -51,7 +51,7 @@ export const GOOGLE_DOMAINS = [
   { host: 'meet.google.com',           type: 'path', pathPrefix: '' },
 
   // AI / ML
-  { host: 'aistudio.google.com',       type: 'path', pathPrefix: '' },
+  { host: 'aistudio.google.com',       type: 'query' },
   { host: 'gemini.google.com',         type: 'path', pathPrefix: '' },
 
   // Developer & Cloud

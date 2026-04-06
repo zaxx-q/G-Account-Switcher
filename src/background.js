@@ -12,7 +12,7 @@
 import { STORAGE_KEYS } from './lib/constants.js';
 import { getAllSettings, setStorage, getStorage } from './lib/storage.js';
 import { applyRules } from './lib/rules.js';
-import { handleProactiveRedirect, applyForceSwitch, clearSyncedState, cleanupTab } from './lib/proactive.js';
+import { handleProactiveRedirect, applyForceSwitch, clearSyncedState, cleanupTab, restoreTabSyncStates } from './lib/proactive.js';
 import { detectAndMergeAccounts } from './lib/accounts.js';
 
 // Track current settings in memory for the tabs.onUpdated listener
@@ -95,6 +95,19 @@ async function initialize() {
 
     // Update badge
     updateBadge(currentSettings);
+
+    // Restore per-tab sync state for existing tabs.
+    // MV3 service workers are killed after ~30s of inactivity, wiping
+    // the in-memory tabSyncedStates Map. Without this restore step,
+    // the next tab event would think every tab is a "first visit" and
+    // redirect it — causing the user to lose progress.
+    if (currentSettings.enabled && currentSettings.mode === 'proactive') {
+      await restoreTabSyncStates(
+        currentSettings.defaultAccount,
+        currentSettings.siteSettings,
+        currentSettings.globalAccountEnabled
+      );
+    }
 
     console.log('[G-Account Switcher] Initialized');
   } catch (error) {
@@ -186,12 +199,11 @@ chrome.storage.onChanged.addListener(async (changes, areaName) => {
  * Proactive mode: listen to tab navigations.
  */
 chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
-  // Determine the URL to act on:
-  // - changeInfo.url is set on new navigations (link click, address bar, etc.)
-  // - On F5/reload, changeInfo has { status: 'loading' } but NO url property;
-  //   in that case, use the tab's existing url so proactive mode still fires.
-  const url = changeInfo.url || (changeInfo.status === 'loading' ? tab.url : null);
-  if (!url) return;
+  // Only act on actual URL changes (new navigations, link clicks, pushState).
+  // Ignore status-only updates (F5 reload, loading state changes) — those
+  // should never cause a redirect since the user is already on the page.
+  if (!changeInfo.url) return;
+  const url = changeInfo.url;
 
   // TEST HOOK: Change default account via URL parameter for automation
   if (url.includes('TEST_SWITCH_ACCOUNT=')) {

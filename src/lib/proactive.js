@@ -299,6 +299,57 @@ export async function handleProactiveRedirect(tabId, url, defaultAccount, siteSe
 }
 
 /**
+ * Restore per-tab sync state by scanning all existing tabs.
+ *
+ * Called on service worker startup to re-populate the in-memory
+ * tabSyncedStates Map. Without this, every service worker restart
+ * (which happens frequently in MV3 — ~30s of inactivity) would
+ * wipe the Map, causing the extension to re-redirect tabs that
+ * are already on the correct Google domain.
+ *
+ * Strategy: any tab already showing a Google page is assumed to be
+ * correctly placed and is marked as synced to the configured account.
+ *
+ * @param {number} defaultAccount
+ * @param {Object} siteSettings
+ * @param {boolean} globalAccountEnabled
+ */
+export async function restoreTabSyncStates(defaultAccount, siteSettings, globalAccountEnabled) {
+  try {
+    const tabs = await chrome.tabs.query({});
+    let restored = 0;
+
+    for (const tab of tabs) {
+      if (!tab.url || !tab.id) continue;
+
+      const domain = findMatchingDomain(tab.url);
+      if (!domain) continue;
+
+      const key = getSiteKey(domain);
+      const hasSiteSetting = key in (siteSettings || {});
+      const siteValue = hasSiteSetting ? siteSettings[key] : undefined;
+
+      // Skip disabled sites
+      if (siteValue === SITE_DISABLED) continue;
+      // Skip if no site setting and global is off
+      if (!hasSiteSetting && !globalAccountEnabled) continue;
+
+      const accountNum = hasSiteSetting ? siteValue : defaultAccount;
+
+      // Mark this tab as already synced — don't disturb it
+      recordTabSync(tab.id, key, accountNum);
+      restored++;
+    }
+
+    if (restored > 0) {
+      console.log(`[G-Account Switcher] Restored sync state for ${restored} tab(s)`);
+    }
+  } catch (error) {
+    console.error('[G-Account Switcher] Failed to restore tab sync states:', error);
+  }
+}
+
+/**
  * Clear synced state so tabs will be re-synced on next navigation.
  *
  * Called when settings change (no args → clear everything) so that

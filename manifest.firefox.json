@@ -13,7 +13,6 @@
 	"host_permissions": [
 		"*://*.google.com/*",
 		"*://*.youtube.com/*",
-		"*://*.googleapis.com/*",
 		"*://gmail.com/*",
 		"*://*.gmail.com/*"
 	],

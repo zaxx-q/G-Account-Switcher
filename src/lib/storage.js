@@ -1,7 +1,7 @@
 /**
  * Chrome storage helpers with Promise wrappers.
  */
-import { STORAGE_DEFAULTS, STORAGE_KEYS } from './constants.js';
+import { STORAGE_DEFAULTS, STORAGE_KEYS } from "./constants.js";
 
 /**
  * Get values from chrome.storage.sync with defaults.
@@ -9,23 +9,23 @@ import { STORAGE_DEFAULTS, STORAGE_KEYS } from './constants.js';
  * @returns {Promise<Object>}
  */
 export function getStorage(keys) {
-  return new Promise((resolve, reject) => {
-    // Build defaults subset for requested keys
-    const defaults = {};
-    const keyList = Array.isArray(keys) ? keys : [keys];
-    for (const key of keyList) {
-      if (key in STORAGE_DEFAULTS) {
-        defaults[key] = STORAGE_DEFAULTS[key];
-      }
-    }
-    chrome.storage.sync.get(defaults, (result) => {
-      if (chrome.runtime.lastError) {
-        reject(new Error(chrome.runtime.lastError.message));
-      } else {
-        resolve(result);
-      }
-    });
-  });
+	return new Promise((resolve, reject) => {
+		// Build defaults subset for requested keys
+		const defaults = {};
+		const keyList = Array.isArray(keys) ? keys : [keys];
+		for (const key of keyList) {
+			if (key in STORAGE_DEFAULTS) {
+				defaults[key] = STORAGE_DEFAULTS[key];
+			}
+		}
+		chrome.storage.sync.get(defaults, (result) => {
+			if (chrome.runtime.lastError) {
+				reject(new Error(chrome.runtime.lastError.message));
+			} else {
+				resolve(result);
+			}
+		});
+	});
 }
 
 /**
@@ -34,15 +34,15 @@ export function getStorage(keys) {
  * @returns {Promise<void>}
  */
 export function setStorage(items) {
-  return new Promise((resolve, reject) => {
-    chrome.storage.sync.set(items, () => {
-      if (chrome.runtime.lastError) {
-        reject(new Error(chrome.runtime.lastError.message));
-      } else {
-        resolve();
-      }
-    });
-  });
+	return new Promise((resolve, reject) => {
+		chrome.storage.sync.set(items, () => {
+			if (chrome.runtime.lastError) {
+				reject(new Error(chrome.runtime.lastError.message));
+			} else {
+				resolve();
+			}
+		});
+	});
 }
 
 /**
@@ -50,7 +50,7 @@ export function setStorage(items) {
  * @returns {Promise<Object>}
  */
 export async function getAllSettings() {
-  return getStorage(Object.values(STORAGE_KEYS));
+	return getStorage(Object.values(STORAGE_KEYS));
 }
 
 /**
@@ -60,5 +60,5 @@ export async function getAllSettings() {
  * @returns {Promise<void>}
  */
 export async function setSetting(key, value) {
-  return setStorage({ [key]: value });
+	return setStorage({ [key]: value });
 }

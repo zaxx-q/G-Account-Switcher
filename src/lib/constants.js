@@ -29,84 +29,124 @@
 // e.g., mail.google.com/mail/u/0/  → pathPrefix = '/mail'
 //       docs.google.com/document/u/0/ → pathPrefix = '/document'
 export const GOOGLE_DOMAINS = [
-  // ── Path-based domains (/u/X/ in path) ──
+	// ── Path-based domains (/u/X/ in path) ──
 
-  // Gmail & Workspace
-  { host: 'mail.google.com',           type: 'path', pathPrefix: '/mail' },
-  { host: 'drive.google.com',          type: 'path', pathPrefix: '/drive' },
-  { host: 'calendar.google.com',       type: 'path', pathPrefix: '/calendar' },
-  { host: 'contacts.google.com',       type: 'path', pathPrefix: '' },
-  { host: 'keep.google.com',           type: 'path', pathPrefix: '' },
-  { host: 'chat.google.com',           type: 'path', pathPrefix: '' },
-  { host: 'tasks.google.com',          type: 'path', pathPrefix: '' },
-  { host: 'photos.google.com',         type: 'path', pathPrefix: '' },
-  { host: 'groups.google.com',         type: 'path', pathPrefix: '' },
+	// Gmail & Workspace
+	{ host: "mail.google.com", type: "path", pathPrefix: "/mail" },
+	{ host: "drive.google.com", type: "path", pathPrefix: "/drive" },
+	{ host: "calendar.google.com", type: "path", pathPrefix: "/calendar" },
+	{ host: "contacts.google.com", type: "path", pathPrefix: "" },
+	{ host: "keep.google.com", type: "path", pathPrefix: "" },
+	{ host: "chat.google.com", type: "path", pathPrefix: "" },
+	{ host: "tasks.google.com", type: "path", pathPrefix: "" },
+	{ host: "photos.google.com", type: "path", pathPrefix: "" },
+	{ host: "groups.google.com", type: "path", pathPrefix: "" },
 
-  // Admin & Account
-  { host: 'myaccount.google.com',      type: 'path', pathPrefix: '' },
-  { host: 'admin.google.com',          type: 'path', pathPrefix: '' },
-  { host: 'notifications.google.com',  type: 'path', pathPrefix: '' },
+	// Admin & Account
+	{ host: "myaccount.google.com", type: "path", pathPrefix: "" },
+	{ host: "admin.google.com", type: "path", pathPrefix: "" },
+	{ host: "notifications.google.com", type: "path", pathPrefix: "" },
 
-  // Communication
-  { host: 'meet.google.com',           type: 'path', pathPrefix: '' },
+	// Communication
+	{ host: "meet.google.com", type: "path", pathPrefix: "" },
 
-  // AI / ML
-  { host: 'aistudio.google.com',       type: 'query' },
-  { host: 'gemini.google.com',         type: 'path', pathPrefix: '' },
+	// AI / ML
+	{ host: "aistudio.google.com", type: "query" },
+	{ host: "gemini.google.com", type: "path", pathPrefix: "" },
 
-  // Developer & Cloud
-  { host: 'console.cloud.google.com',  type: 'path', pathPrefix: '' },
+	// Developer & Cloud
+	{ host: "console.cloud.google.com", type: "path", pathPrefix: "" },
 
-  // Play Store (uses ?authuser=X, strips it after load like YouTube)
-  { host: 'play.google.com',           type: 'query', stripsParam: true },
+	// Play Store (uses ?authuser=X, strips it after load like YouTube)
+	{ host: "play.google.com", type: "query", stripsParam: true },
 
-  // Google Docs suite — each service uses ?authuser=X (strips it after reading).
-  // Each gets its own siteKey for independent per-site account settings.
-  { host: 'docs.google.com',           type: 'query', pathPrefix: '/document',     siteKey: 'docs.google.com/document',     stripsParam: true },
-  { host: 'docs.google.com',           type: 'query', pathPrefix: '/spreadsheets', siteKey: 'docs.google.com/spreadsheets', stripsParam: true },
-  { host: 'docs.google.com',           type: 'query', pathPrefix: '/presentation', siteKey: 'docs.google.com/presentation', stripsParam: true },
-  { host: 'docs.google.com',           type: 'query', pathPrefix: '/forms',        siteKey: 'docs.google.com/forms',        stripsParam: true },
-  { host: 'docs.google.com',           type: 'query', pathPrefix: '/drawings',     siteKey: 'docs.google.com/drawings',     stripsParam: true },
-  { host: 'docs.google.com',           type: 'path', pathPrefix: '' },  // Docs homepage fallback (supports /u/X/)
+	// Google Docs suite — each service uses ?authuser=X (strips it after reading).
+	// Each gets its own siteKey for independent per-site account settings.
+	{
+		host: "docs.google.com",
+		type: "query",
+		pathPrefix: "/document",
+		siteKey: "docs.google.com/document",
+		stripsParam: true,
+	},
+	{
+		host: "docs.google.com",
+		type: "query",
+		pathPrefix: "/spreadsheets",
+		siteKey: "docs.google.com/spreadsheets",
+		stripsParam: true,
+	},
+	{
+		host: "docs.google.com",
+		type: "query",
+		pathPrefix: "/presentation",
+		siteKey: "docs.google.com/presentation",
+		stripsParam: true,
+	},
+	{
+		host: "docs.google.com",
+		type: "query",
+		pathPrefix: "/forms",
+		siteKey: "docs.google.com/forms",
+		stripsParam: true,
+	},
+	{
+		host: "docs.google.com",
+		type: "query",
+		pathPrefix: "/drawings",
+		siteKey: "docs.google.com/drawings",
+		stripsParam: true,
+	},
+	{ host: "docs.google.com", type: "path", pathPrefix: "" }, // Docs homepage fallback (supports /u/X/)
 
-  // ── Query-based domains (authuser=X in query string) ──
+	// ── Query-based domains (authuser=X in query string) ──
 
-  // AI mode (identified by udm=50 query param; must come before generic www.google.com)
-  { host: 'www.google.com',            type: 'query', queryMatch: { key: 'udm', value: '50' }, siteKey: 'www.google.com/aimode' },
+	// AI mode (identified by udm=50 query param; must come before generic www.google.com)
+	{
+		host: "www.google.com",
+		type: "query",
+		queryMatch: { key: "udm", value: "50" },
+		siteKey: "www.google.com/aimode",
+	},
 
-  // Maps (must come before the generic www.google.com entry)
-  { host: 'www.google.com',            type: 'query', pathPrefix: '/maps', siteKey: 'www.google.com/maps' },
+	// Maps (must come before the generic www.google.com entry)
+	{
+		host: "www.google.com",
+		type: "query",
+		pathPrefix: "/maps",
+		siteKey: "www.google.com/maps",
+	},
 
-  // Search & other www.google.com services
-  { host: 'www.google.com',            type: 'query' },
+	// Search & other www.google.com services
+	{ host: "www.google.com", type: "query" },
 
-  // YouTube (strips authuser= after reading it into session cookies)
-  { host: 'www.youtube.com',           type: 'query', stripsParam: true },
-  { host: 'studio.youtube.com',        type: 'query', stripsParam: true },
+	// YouTube (strips authuser= after reading it into session cookies)
+	{ host: "www.youtube.com", type: "query", stripsParam: true },
+	{ host: "studio.youtube.com", type: "query", stripsParam: true },
 
-  // NotebookLM
-  { host: 'notebooklm.google.com',     type: 'query' },
+	// NotebookLM
+	{ host: "notebooklm.google.com", type: "query" },
 
-  // Analytics & Marketing
-  { host: 'analytics.google.com',      type: 'query' },
-  { host: 'tagmanager.google.com',     type: 'query' },
-  { host: 'lookerstudio.google.com',   type: 'query' },
-  { host: 'search.google.com',         type: 'query', pathPrefix: '/search-console' },
+	// Analytics & Marketing
+	{ host: "analytics.google.com", type: "query" },
+	{ host: "tagmanager.google.com", type: "query" },
+	{ host: "lookerstudio.google.com", type: "query" },
+	{ host: "search.google.com", type: "query", pathPrefix: "/search-console" },
 
-  // Ads & Monetization
-  { host: 'ads.google.com',            type: 'query' },
-  { host: 'adsense.google.com',        type: 'query' },
-  { host: 'admob.google.com',          type: 'query' },
+	// Ads & Monetization
+	{ host: "ads.google.com", type: "query" },
+	{ host: "adsense.google.com", type: "query" },
+	{ host: "admob.google.com", type: "query" },
 
-  // Developer
-  { host: 'console.firebase.google.com', type: 'query' },
+	// Developer
+	{ host: "console.firebase.google.com", type: "query" },
 
-  // Other
-  { host: 'translate.google.com',      type: 'path', pathPrefix: '' },
+	// Other
+	{ host: "translate.google.com", type: "path", pathPrefix: "" },
 
-  // ── Excluded — never rewrite ──
-  { host: 'music.youtube.com',         type: 'excluded' },  // Cookie-based session, doesn't support authuser
-  { host: 'accounts.google.com',       type: 'excluded' },  // Login flows — must not interfere
+	// ── Excluded — never rewrite ──
+	{ host: "music.youtube.com", type: "excluded" }, // Cookie-based session, doesn't support authuser
+	{ host: "accounts.google.com", type: "excluded" }, // Login flows — must not interfere
 ];
 
 /**
@@ -120,40 +160,40 @@ export const GOOGLE_DOMAINS = [
  * @returns {string} The key used in siteSettings storage
  */
 export function getSiteKey(domain) {
-  return domain.siteKey || domain.host;
+	return domain.siteKey || domain.host;
 }
 
 /**
  * Unique host patterns for manifest host_permissions and URL matching.
  */
 export const ALL_GOOGLE_HOST_PATTERNS = [
-  '*://*.google.com/*',
-  '*://*.youtube.com/*',
-  '*://*.googleapis.com/*',
+	"*://*.google.com/*",
+	"*://*.youtube.com/*",
+	"*://*.googleapis.com/*",
 ];
 
 /**
  * Default storage values.
  */
 export const STORAGE_DEFAULTS = {
-  enabled: true,
-  mode: 'proactive',             // 'proactive' or 'passive'
-  defaultAccount: 0,
-  globalAccountEnabled: false,   // Global default is OFF by default (per-site first)
-  accounts: [],                  // [{ index: 0, email: '', label: '' }, ...]
-  siteSettings: {},              // { 'youtube.com': 2, 'mail.google.com': 0, ... }
+	enabled: true,
+	mode: "proactive", // 'proactive' or 'passive'
+	defaultAccount: 0,
+	globalAccountEnabled: false, // Global default is OFF by default (per-site first)
+	accounts: [], // [{ index: 0, email: '', label: '' }, ...]
+	siteSettings: {}, // { 'youtube.com': 2, 'mail.google.com': 0, ... }
 };
 
 /**
  * Storage keys enum.
  */
 export const STORAGE_KEYS = {
-  ENABLED: 'enabled',
-  MODE: 'mode',
-  DEFAULT_ACCOUNT: 'defaultAccount',
-  GLOBAL_ACCOUNT_ENABLED: 'globalAccountEnabled',
-  ACCOUNTS: 'accounts',
-  SITE_SETTINGS: 'siteSettings',
+	ENABLED: "enabled",
+	MODE: "mode",
+	DEFAULT_ACCOUNT: "defaultAccount",
+	GLOBAL_ACCOUNT_ENABLED: "globalAccountEnabled",
+	ACCOUNTS: "accounts",
+	SITE_SETTINGS: "siteSettings",
 };
 
 /**
@@ -171,14 +211,15 @@ export const SITE_DISABLED = -1;
 /**
  * URL for the Google ListAccounts endpoint.
  */
-export const LIST_ACCOUNTS_URL = 'https://accounts.google.com/ListAccounts?gpsia=1&source=ogb&mo=1';
+export const LIST_ACCOUNTS_URL =
+	"https://accounts.google.com/ListAccounts?gpsia=1&source=ogb&mo=1";
 
 /**
  * Regex patterns for matching /u/X/ and authuser=X in URLs.
  */
 export const URL_PATTERNS = {
-  // Matches /u/ followed by a digit
-  PATH_ACCOUNT: /\/u\/(\d+)(\/|$)/,
-  // Matches authuser= followed by a digit(s)
-  QUERY_ACCOUNT: /[?&]authuser=(\d+)/,
+	// Matches /u/ followed by a digit
+	PATH_ACCOUNT: /\/u\/(\d+)(\/|$)/,
+	// Matches authuser= followed by a digit(s)
+	QUERY_ACCOUNT: /[?&]authuser=(\d+)/,
 };

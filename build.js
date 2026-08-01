@@ -1,5 +1,5 @@
-const fs = require("fs");
-const path = require("path");
+const fs = require("node:fs");
+const path = require("node:path");
 
 const rootDir = __dirname;
 const distDir = path.join(rootDir, "dist");

@@ -20,7 +20,7 @@ import {
 	restoreTabSyncStates,
 } from "./lib/proactive.js";
 import { applyRules } from "./lib/rules.js";
-import { getAllSettings, getStorage, setStorage } from "./lib/storage.js";
+import { getAllSettings } from "./lib/storage.js";
 
 // Track current settings in memory for the tabs.onUpdated listener
 let currentSettings = null;
@@ -200,7 +200,7 @@ chrome.storage.onChanged.addListener(async (changes, areaName) => {
 				currentWindow: true,
 			});
 			if (activeTab?.id && activeTab?.url) {
-				const redirected = await handleProactiveRedirect(
+				const _redirected = await handleProactiveRedirect(
 					activeTab.id,
 					activeTab.url,
 					currentSettings.defaultAccount,
@@ -217,7 +217,7 @@ chrome.storage.onChanged.addListener(async (changes, areaName) => {
 /**
  * Proactive mode: listen to tab navigations.
  */
-chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
+chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, _tab) => {
 	// Only act on actual URL changes (new navigations, link clicks, pushState).
 	// Ignore status-only updates (F5 reload, loading state changes) — those
 	// should never cause a redirect since the user is already on the page.
@@ -249,7 +249,7 @@ chrome.tabs.onRemoved.addListener((tabId) => {
 /**
  * Handle messages from popup.
  */
-chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
 	if (message.type === "detectAccounts") {
 		detectAndMergeAccounts()
 			.then((accounts) => {

@@ -40,7 +40,7 @@ const currentSiteSection = document.getElementById("currentSiteSection");
 const siteAccountIconsEl = document.getElementById("siteAccountIcons");
 const currentSiteName = document.getElementById("currentSiteName");
 const currentSiteStatus = document.getElementById("currentSiteStatus");
-const globalSection = document.getElementById("globalSection");
+const _globalSection = document.getElementById("globalSection");
 const globalHeader = document.getElementById("globalHeader");
 const globalArrow = document.getElementById("globalArrow");
 const globalBody = document.getElementById("globalBody");
@@ -275,7 +275,7 @@ function createSiteIcon({
 	specialClass,
 }) {
 	const btn = document.createElement("button");
-	btn.className = `site-account-icon${isSpecial ? " special" : ""}${isSelected ? " selected" : ""}${specialClass ? " " + specialClass : ""}`;
+	btn.className = `site-account-icon${isSpecial ? " special" : ""}${isSelected ? " selected" : ""}${specialClass ? ` ${specialClass}` : ""}`;
 	btn.dataset.value = value;
 	btn.title = caption;
 
@@ -303,7 +303,7 @@ function createSiteIcon({
 /**
  * Update the status text below the icon selector.
  */
-function updateCurrentSiteStatusText(host, currentSetting, accounts) {
+function updateCurrentSiteStatusText(_host, currentSetting, accounts) {
 	if (currentSetting === SITE_DISABLED) {
 		currentSiteStatus.textContent = "🚫 Redirection disabled for this site";
 	} else if (currentSetting !== undefined) {
@@ -567,7 +567,7 @@ async function saveNewAccount() {
 	const email = newEmailInput.value.trim();
 	const label = newLabelInput.value.trim();
 
-	if (isNaN(index) || index < 0 || index > MAX_ACCOUNT_INDEX) {
+	if (Number.isNaN(index) || index < 0 || index > MAX_ACCOUNT_INDEX) {
 		showStatus(`Index must be 0-${MAX_ACCOUNT_INDEX}`, "error");
 		return;
 	}
@@ -709,7 +709,7 @@ function startInlineEdit(host, currentAccountIndex, infoEl) {
 	accounts.forEach((acc) => {
 		const opt = document.createElement("option");
 		opt.value = acc.index.toString();
-		opt.textContent = `${acc.index}: ${acc.label || acc.email || acc.name || "Account " + acc.index}`;
+		opt.textContent = `${acc.index}: ${acc.label || acc.email || acc.name || `Account ${acc.index}`}`;
 		if (acc.index === currentAccountIndex) opt.selected = true;
 		select.appendChild(opt);
 	});
@@ -746,7 +746,7 @@ function startInlineEdit(host, currentAccountIndex, infoEl) {
 			});
 			renderCurrentSite();
 			showStatus(
-				`${host} → ${newIndex === SITE_DISABLED ? "Disabled" : "Account " + newIndex}`,
+				`${host} → ${newIndex === SITE_DISABLED ? "Disabled" : `Account ${newIndex}`}`,
 				"success",
 			);
 			refreshCurrentTabNow();
@@ -815,7 +815,7 @@ async function saveNewSiteSetting() {
 	}
 
 	if (
-		isNaN(accountIndex) ||
+		Number.isNaN(accountIndex) ||
 		accountIndex < -1 ||
 		accountIndex > MAX_ACCOUNT_INDEX
 	) {
@@ -922,7 +922,7 @@ async function handleDetect() {
 			);
 		}
 	} catch (error) {
-		showStatus("Detection failed: " + error.message, "error");
+		showStatus(`Detection failed: ${error.message}`, "error");
 	} finally {
 		detectBtn.classList.remove("loading");
 		detectBtn.textContent = "🔍 Detect";

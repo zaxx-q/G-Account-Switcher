@@ -210,9 +210,9 @@ export async function handleProactiveRedirect(
 	siteSettings,
 	globalAccountEnabled,
 ) {
-	let host;
+	let _host;
 	try {
-		host = new URL(url).hostname;
+		_host = new URL(url).hostname;
 	} catch {
 		return false;
 	}

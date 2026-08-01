@@ -180,7 +180,7 @@ function renderCurrentSite() {
 	const accounts = currentSettings.accounts || [];
 
 	// Build icon row
-	siteAccountIconsEl.innerHTML = "";
+	siteAccountIconsEl.textContent = "";
 
 	// "Default" option (no site-specific setting)
 	const defaultIcon = createSiteIcon({
@@ -722,8 +722,7 @@ function startInlineEdit(host, currentAccountIndex, infoEl) {
 	select.appendChild(disableOpt);
 
 	// Replace info content with select
-	const originalContent = infoEl.innerHTML;
-	infoEl.innerHTML = "";
+	infoEl.textContent = "";
 
 	const siteName = document.createElement("span");
 	siteName.className = "site-setting-site";
@@ -776,7 +775,7 @@ async function removeSiteSetting(host) {
 // ─── Add Site Setting ───
 
 function populateSettingSites() {
-	settingSiteSelect.innerHTML = "";
+	settingSiteSelect.textContent = "";
 
 	// Get unique non-excluded site keys
 	const keys = [
@@ -865,21 +864,27 @@ function populateGlobalAccountSelect() {
 	const accounts = currentSettings.accounts || [];
 	const currentDefault = currentSettings.defaultAccount || 0;
 
-	let options = "";
-	// If no accounts detected, show basic index options
+	globalAccountSelect.textContent = "";
+
 	if (accounts.length === 0) {
 		for (let i = 0; i <= MAX_ACCOUNT_INDEX; i++) {
-			options += `<option value="${i}" ${i === currentDefault ? "selected" : ""}>Account ${i}</option>`;
+			const option = document.createElement("option");
+			option.value = i.toString();
+			option.textContent = `Account ${i}`;
+			if (i === currentDefault) option.selected = true;
+			globalAccountSelect.appendChild(option);
 		}
 	} else {
 		accounts.forEach((acc) => {
+			const option = document.createElement("option");
+			option.value = acc.index.toString();
 			const label =
 				acc.label || acc.email || acc.name || `Account ${acc.index}`;
-			options += `<option value="${acc.index}" ${acc.index === currentDefault ? "selected" : ""}>${acc.index}: ${label}</option>`;
+			option.textContent = `${acc.index}: ${label}`;
+			if (acc.index === currentDefault) option.selected = true;
+			globalAccountSelect.appendChild(option);
 		});
 	}
-
-	globalAccountSelect.innerHTML = options;
 }
 
 function toggleGlobalBody() {

@@ -6,9 +6,9 @@ A lightweight Manifest V3 Chrome extension that lets you assign specific Google 
 
 Google identifies accounts by a numeric index (0, 1, 2, ...) in URLs via two patterns:
 
-| Pattern | Example | Services |
-|---------|---------|----------|
-| **Path-based** `/u/X/` | `mail.google.com/mail/u/1/` | Gmail, Drive, Calendar, Photos, AI Studio, Gemini, Meet, Cloud Console |
+| Pattern                      | Example                        | Services                                                                                                        |
+| ---------------------------- | ------------------------------ | --------------------------------------------------------------------------------------------------------------- |
+| **Path-based** `/u/X/`       | `mail.google.com/mail/u/1/`    | Gmail, Drive, Calendar, Photos, AI Studio, Gemini, Meet, Cloud Console                                          |
 | **Query-based** `authuser=X` | `google.com/search?authuser=1` | Search, Maps, Docs, Sheets, Slides, Forms, Drawings, YouTube, NotebookLM, Analytics, Firebase, Ads, Tag Manager |
 
 This extension rewrites those indices using two layers:
@@ -49,11 +49,25 @@ By default, the extension only activates based on **specific per-site configurat
 
 ## Installation
 
+### Chrome / Edge / Brave
+
 1. Clone or download this repository
-2. Open `chrome://extensions/` in Chrome/Edge/Brave
-3. Enable "Developer mode" (toggle in top-right)
-4. Click "Load unpacked"
-5. Select the `G-Account-Switcher` folder (the one containing `manifest.json`)
+2. Run `node build.js` (or use the `dist/chrome/` folder)
+3. Open `chrome://extensions/`
+4. Enable "Developer mode"
+5. Click "Load unpacked" → select the `dist/chrome/` folder
+
+### Firefox
+
+1. Clone or download this repository
+2. Run `node build.js`
+3. Open `about:debugging#/runtime/this-firefox`
+4. Click "Load Temporary Add-on..."
+5. Select `dist/firefox/manifest.json`
+
+### Firefox (permanent install via AMO)
+
+- Submit the `dist/firefox/` folder as a .zip to addons.mozilla.org
 
 ## Usage
 
@@ -69,9 +83,11 @@ By default, the extension only activates based on **specific per-site configurat
 
 ```
 G-Account-Switcher/
-├── manifest.json                 # MV3 manifest
+├── manifest.json                 # Chrome MV3 manifest
+├── manifest.firefox.json         # Firefox MV3 manifest
+├── build.js                      # Build script generating dist/chrome and dist/firefox
 ├── src/
-│   ├── background.js             # Service worker: rules, cookies, messages, migration
+│   ├── background.js             # Background script: rules, cookies, messages, migration
 │   ├── lib/
 │   │   ├── constants.js          # 30+ Google domain mappings, siteKey/queryMatch config, storage keys
 │   │   ├── storage.js            # chrome.storage.sync helpers
@@ -94,14 +110,14 @@ G-Account-Switcher/
 
 ## Permissions
 
-| Permission | Why |
-|---|---|
-| `storage` | Save account settings and preferences |
-| `tabs` | Detect bare Google URLs for proactive mode; find existing Google tabs for fast account detection |
-| `scripting` | Inject account detection fetch into a Google tab (required for first-party cookie access) |
-| `declarativeNetRequest` | Rewrite `/u/X/` and `authuser=X` pre-request |
-| `cookies` | Monitor Google auth cookie changes to auto-refresh the account list on sign-in/out |
-| `host_permissions: *.google.com, *.youtube.com, *.gmail.com` | Match and redirect Google service URLs |
+| Permission                                                   | Why                                                                                              |
+| ------------------------------------------------------------ | ------------------------------------------------------------------------------------------------ |
+| `storage`                                                    | Save account settings and preferences                                                            |
+| `tabs`                                                       | Detect bare Google URLs for proactive mode; find existing Google tabs for fast account detection |
+| `scripting`                                                  | Inject account detection fetch into a Google tab (required for first-party cookie access)        |
+| `declarativeNetRequest`                                      | Rewrite `/u/X/` and `authuser=X` pre-request                                                     |
+| `cookies`                                                    | Monitor Google auth cookie changes to auto-refresh the account list on sign-in/out               |
+| `host_permissions: *.google.com, *.youtube.com, *.gmail.com` | Match and redirect Google service URLs                                                           |
 
 ## Covered Services
 
@@ -116,11 +132,13 @@ G-Account-Switcher/
 **Other:** YouTube, YouTube Studio, Google Search, Google Maps, Google Photos, Google Translate, Google Play Store, Google Admin Console, My Account, Google Analytics, Google Notifications.
 
 **Sub-service disambiguation on `www.google.com`:**
+
 - `www.google.com` — Google Search (generic fallback)
 - `www.google.com/maps` — Google Maps (matched by `/maps` path prefix, stored as `www.google.com/maps`)
 - `www.google.com/ai` — AI Mode (matched by `udm=50` query parameter, stored as `www.google.com/aimode`)
 
 **Sub-service disambiguation on `docs.google.com`:**
+
 - `docs.google.com` — Generic fallback (path-based `/u/X/`)
 - `docs.google.com/document` — Google Docs (uses `?authuser=X`, stored as `docs.google.com/document`)
 - `docs.google.com/spreadsheets` — Google Sheets (uses `?authuser=X`, stored as `docs.google.com/spreadsheets`)
@@ -131,28 +149,35 @@ G-Account-Switcher/
 All Docs suite services strip the `authuser` parameter after reading it, so they rely on the per-tab sync tracker (like YouTube and Play Store).
 
 **Excluded:**
+
 - `accounts.google.com` — Login/logout flows are never modified.
 - `music.youtube.com` — YouTube Music uses cookie-based sessions and does not support `authuser` parameter switching.
 
 **Special Redirects:**
+
 - `gmail.com` / `www.gmail.com` → `mail.google.com/mail/u/X/`
 
 ## Technical Notes
 
 ### Account Detection
+
 The extension detects logged-in accounts by fetching Google's internal `ListAccounts` endpoint. Since MV3 service workers cannot send first-party cookies, the fetch is injected via `chrome.scripting.executeScript` into an existing Google/YouTube tab (or a temporary `accounts.google.com` tab as fallback). The response is parsed using a recursive traversal for `gaia.l.a` markers, extracting email (index 3), display name (index 2), and profile picture URL (index 4). Both XSSI-prefixed JSON and HTML/postMessage formats are supported.
 
 ### Fast Detection Strategy
+
 Instead of always creating a new tab (slow and disruptive), the extension:
+
 1. Searches for existing loaded Google/YouTube tabs via `chrome.tabs.query()`
 2. Injects the detection script into the best available tab
 3. Falls back to cached accounts if no suitable tab exists and `AVOID_TAB_CREATION` is true
 4. Only creates a temporary tab as a last resort
 
 ### Cookie-Based Auto-Refresh
+
 The background service worker monitors `chrome.cookies.onChanged` for Google auth cookies (`SID`, `SSID`, `HSID`, `LSID`, `ACCOUNT_CHOOSER`). When these change (sign-in, sign-out, or account switch), account detection runs automatically after a 2-second debounce to let all cookie changes settle.
 
 ### Sub-Service Disambiguation (siteKey / queryMatch)
+
 Multiple Google services share the same host but need independent account settings. The extension handles this through two disambiguation mechanisms:
 
 - **`pathPrefix`** — Matches URL paths (e.g., `/maps` for Google Maps on `www.google.com`, `/forms` for Google Forms on `docs.google.com`). When a `siteKey` is set (e.g., `docs.google.com/forms`), the entry gets its own slot in site settings storage, independent from the host's catchall entry.
@@ -163,6 +188,7 @@ Domain matching follows a unified priority chain across all types: (1) queryMatc
 The `getSiteKey()` helper resolves each domain entry to its storage key (`domain.siteKey || domain.host`), ensuring all code paths — rules, proactive mode, popup UI, and anti-loop cache — use the correct key for lookups.
 
 ### Redirect Loop Prevention (Per-Tab Tracking)
+
 Some Google services (YouTube, Play Store, Docs suite) process the `authuser` parameter, switch the session via cookies (for YouTube and Play Store only), then strip the parameter and reload. Without protection, the extension would re-add the parameter in an infinite loop.
 
 To prevent this, a per-tab sync tracker (`tabSyncedStates`) records `tabId:siteKey → accountNum` after each redirect. Once a tab has been synced for a given site, no further redirects occur — regardless of how much time passes or how many in-page navigations happen. This means:
@@ -176,7 +202,9 @@ To prevent this, a per-tab sync tracker (`tabSyncedStates`) records `tabId:siteK
 The tracker is keyed by `getSiteKey(domain)` combined with `tabId` to prevent collisions between services sharing the same host (e.g., Forms vs Docs on `docs.google.com`) and to provide per-tab isolation.
 
 ### Storage Migration (v2 → v3)
+
 On install/update, the background service worker migrates legacy storage keys:
+
 - `siteOverrides` → `siteSettings` (data preserved)
 - Existing users with a `defaultAccount` set automatically get `globalAccountEnabled: true` to preserve their existing behavior
 - New installs start with `globalAccountEnabled: false` (per-site only)

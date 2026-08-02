@@ -1,7 +1,7 @@
 {
 	"manifest_version": 3,
 	"name": "G-Account Switcher",
-	"version": "3.1.1",
+	"version": "3.1.2",
 	"description": "Assign specific Google accounts to individual Google sites. Optionally set a global default across all Google services.",
 	"permissions": [
 		"storage",
@@ -31,7 +31,7 @@
 	},
 	"browser_specific_settings": {
 		"gecko": {
-			"id": "g-account-switcher@example.com",
+			"id": "G-Account-Switcher@zaxx-q-github.com",
 			"strict_min_version": "142.0",
 			"data_collection_permissions": {
 				"required": ["none"]

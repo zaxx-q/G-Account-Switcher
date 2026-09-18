@@ -78,6 +78,19 @@ async function migrateStorage() {
 		needsUpdate = true;
 	}
 
+	// Migrate settings for rebranded domains (notebooklm.google.com → notebook.google.com)
+	const currentSiteSettings = updates.siteSettings || data.siteSettings;
+	if (
+		currentSiteSettings?.["notebooklm.google.com"] !== undefined &&
+		currentSiteSettings?.["notebook.google.com"] === undefined
+	) {
+		updates.siteSettings = {
+			...currentSiteSettings,
+			"notebook.google.com": currentSiteSettings["notebooklm.google.com"],
+		};
+		needsUpdate = true;
+	}
+
 	if (needsUpdate) {
 		await chrome.storage.sync.set(updates);
 		// Clean up legacy key

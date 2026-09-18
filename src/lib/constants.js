@@ -34,6 +34,13 @@ export const GOOGLE_DOMAINS = [
 	// Gmail & Workspace
 	{ host: "mail.google.com", type: "path", pathPrefix: "/mail" },
 	{ host: "drive.google.com", type: "path", pathPrefix: "/drive" },
+	// Google Drive file viewer uses ?authuser=X (strips it after reading, like Google Docs)
+	{
+		host: "drive.google.com",
+		type: "query",
+		pathPrefix: "/file",
+		stripsParam: true,
+	},
 	{ host: "calendar.google.com", type: "path", pathPrefix: "/calendar" },
 	{ host: "contacts.google.com", type: "path", pathPrefix: "" },
 	{ host: "keep.google.com", type: "path", pathPrefix: "" },
@@ -124,7 +131,8 @@ export const GOOGLE_DOMAINS = [
 	{ host: "www.youtube.com", type: "query", stripsParam: true },
 	{ host: "studio.youtube.com", type: "query", stripsParam: true },
 
-	// NotebookLM
+	// Gemini Notebook / NotebookLM
+	{ host: "notebook.google.com", type: "query" },
 	{ host: "notebooklm.google.com", type: "query" },
 
 	// Analytics & Marketing

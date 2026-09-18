@@ -1,6 +1,6 @@
 # G-Account Switcher
 
-A lightweight Manifest V3 Chrome extension that lets you assign specific Google accounts to individual Google services — Gmail, YouTube, Drive, Docs, Calendar, AI Studio, Gemini, NotebookLM, Firebase, Google Ads, Analytics, and 30+ more. Optionally set a global default across all services.
+A lightweight Manifest V3 Chrome extension that lets you assign specific Google accounts to individual Google services — Gmail, YouTube, Drive, Docs, Calendar, AI Studio, Gemini, Gemini Notebook (NotebookLM), Firebase, Google Ads, Analytics, and 30+ more. Optionally set a global default across all services.
 
 ## How It Works
 
@@ -123,7 +123,7 @@ G-Account-Switcher/
 
 **Workspace:** Gmail, Google Drive, Google Docs, Sheets, Slides, Drawings, Google Calendar, Google Contacts, Google Keep, Google Tasks, Google Chat, Google Meet, Google Groups, Google Forms.
 
-**AI:** Gemini, Google AI Studio, NotebookLM, Google AI Mode (Search with `udm=50`).
+**AI:** Gemini, Google AI Studio, Gemini Notebook (NotebookLM), Google AI Mode (Search with `udm=50`).
 
 **Developer & Cloud:** Google Cloud Console, Firebase Console, Google Tag Manager, Looker Studio, Google Search Console.
 

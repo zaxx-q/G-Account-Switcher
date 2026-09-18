@@ -49,15 +49,11 @@ By default, the extension only activates based on **specific per-site configurat
 
 ## Installation
 
-### Chrome / Edge / Brave
-
-1. Clone or download this repository
-2. Run `node build.js` (or use the `dist/chrome/` folder)
-3. Open `chrome://extensions/`
-4. Enable "Developer mode"
-5. Click "Load unpacked" → select the `dist/chrome/` folder
-
 ### Firefox
+
+Install directly from [Firefox Add-ons (AMO)](https://addons.mozilla.org/en-US/firefox/addon/g-account-switcher/).
+
+For manual/development loading:
 
 1. Clone or download this repository
 2. Run `node build.js`
@@ -65,9 +61,13 @@ By default, the extension only activates based on **specific per-site configurat
 4. Click "Load Temporary Add-on..."
 5. Select `dist/firefox/manifest.json`
 
-### Firefox (permanent install via AMO)
+### Chrome / Edge / Brave (Unpacked)
 
-- Submit the `dist/firefox/` folder as a .zip to addons.mozilla.org
+1. Clone or download this repository
+2. Run `node build.js` (or use the `dist/chrome/` folder)
+3. Open `chrome://extensions/`
+4. Enable "Developer mode"
+5. Click "Load unpacked" → select the `dist/chrome/` folder
 
 ## Usage
 
@@ -85,7 +85,7 @@ By default, the extension only activates based on **specific per-site configurat
 G-Account-Switcher/
 ├── manifest.json                 # Chrome MV3 manifest
 ├── manifest.firefox.json         # Firefox MV3 manifest
-├── build.js                      # Build script generating dist/chrome and dist/firefox
+├── build.js                      # Build script generating dist/ directories and zip packages
 ├── src/
 │   ├── background.js             # Background script: rules, cookies, messages, migration
 │   ├── lib/

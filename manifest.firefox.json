@@ -1,7 +1,7 @@
 {
 	"manifest_version": 3,
 	"name": "G-Account Switcher",
-	"version": "3.2.0",
+	"version": "3.2.1",
 	"description": "Assign specific Google accounts to individual Google sites. Optionally set a global default across all Google services.",
 	"permissions": [
 		"storage",

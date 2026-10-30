@@ -23,6 +23,7 @@
  *   https://www.google.com/search?q=test&authuser=3
  *   https://www.google.com/search?q=test&udm=50&authuser=2  (AI mode)
  *   https://docs.google.com/forms/d/e/1FA.../viewform?authuser=1
+ *   https://meet.google.com/meet/ccx-hyqb-nse?pli=1&authuser=2
  */
 
 // Domains where /u/X/ appears right after a known path segment
@@ -55,6 +56,9 @@ export const GOOGLE_DOMAINS = [
 	{ host: "notifications.google.com", type: "path", pathPrefix: "" },
 
 	// Communication
+	// Google Meet: new meeting links use /meet/<code>?authuser=X;
+	// the home page and legacy links still use /u/X/ (kept as path fallback)
+	{ host: "meet.google.com", type: "query", pathPrefix: "/meet" },
 	{ host: "meet.google.com", type: "path", pathPrefix: "" },
 
 	// AI / ML

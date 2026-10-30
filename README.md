@@ -6,10 +6,10 @@ A lightweight Manifest V3 Chrome extension that lets you assign specific Google 
 
 Google identifies accounts by a numeric index (0, 1, 2, ...) in URLs via two patterns:
 
-| Pattern                      | Example                        | Services                                                                                                        |
-| ---------------------------- | ------------------------------ | --------------------------------------------------------------------------------------------------------------- |
-| **Path-based** `/u/X/`       | `mail.google.com/mail/u/1/`    | Gmail, Drive, Calendar, Photos, AI Studio, Gemini, Meet, Cloud Console                                          |
-| **Query-based** `authuser=X` | `google.com/search?authuser=1` | Search, Maps, Docs, Sheets, Slides, Forms, Drawings, YouTube, NotebookLM, Analytics, Firebase, Ads, Tag Manager |
+| Pattern                      | Example                        | Services                                                                                                                              |
+| ---------------------------- | ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------- |
+| **Path-based** `/u/X/`       | `mail.google.com/mail/u/1/`    | Gmail, Drive, Calendar, Photos, AI Studio, Gemini, Cloud Console                                                                      |
+| **Query-based** `authuser=X` | `google.com/search?authuser=1` | Search, Maps, Docs, Sheets, Slides, Forms, Drawings, YouTube, Meet (meeting links), NotebookLM, Analytics, Firebase, Ads, Tag Manager |
 
 This extension rewrites those indices using two layers:
 

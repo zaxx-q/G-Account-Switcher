@@ -8,33 +8,23 @@
  * into any *.google.com tab will include the auth cookies (SID, HSID, etc.)
  * that the ListAccounts endpoint requires.
  *
- * PERFORMANCE: We try to reuse an existing Google/YouTube tab first.
- * Only as a fallback do we create a temporary tab on accounts.google.com.
- * If no tabs and AVOID_TAB_CREATION is true, we return cached accounts.
+ * The injected function only fetches and returns the raw text. All parsing
+ * happens here in the background (see parse-accounts.js), where it can be
+ * tested without a browser.
  *
- * The endpoint returns a JSON-like array structure with account info:
- *   [
- *     "gaia.l.a.r",
- *     [
- *       [
- *         "gaia.l.a",
- *         1,                    // unknown
- *         "Display Name",       // index 2
- *         "email@gmail.com",    // index 3
- *         "Photo URL",          // index 4
- *         ...
- *       ],
- *       ...
- *     ]
- *   ]
+ * PERFORMANCE: We try to reuse an existing Google/YouTube tab first.
+ * Only when the user explicitly asks (the popup's Detect button) and no
+ * such tab exists do we open a temporary background tab. Automatic
+ * refreshes (install, cookie changes) never open tabs; they fall back to
+ * the cached accounts instead.
  */
 import { LIST_ACCOUNTS_URL } from "./constants.js";
+import { mergeAccounts, parseAccounts } from "./parse-accounts.js";
 import { getStorage, setStorage } from "./storage.js";
 
 const DETECTION_CONFIG = {
 	TAB_LOAD_TIMEOUT: 5000, // Max time to wait for tab load (ms)
 	SCRIPT_EXEC_TIMEOUT: 10000, // Max time for script execution (ms)
-	AVOID_TAB_CREATION: true, // Prefer cached accounts over creating tabs
 };
 
 /**
@@ -63,138 +53,39 @@ function waitForTabLoad(tabId, timeoutMs = DETECTION_CONFIG.TAB_LOAD_TIMEOUT) {
 }
 
 /**
- * Parse the ListAccounts response which can come in two formats:
- *
- * Format A (raw JSON with XSSI prefix):
- *   )]}'\n["gaia.l.a.r",[...]]
- *
- * Format B (HTML with postMessage wrapper):
- *   <!DOCTYPE html><html><body><script>
- *   window.parent.postMessage('\x5b\x22gaia.l.a.r\x22,...\x5d', '*');
- *   </script></body></html>
- *
- * @param {string} text - Raw response text
- * @returns {Array} Parsed JSON data
- */
-function parseListAccountsResponse(text) {
-	const trimmed = text.trim();
-
-	// Format A: starts with )]}' — strip XSSI prefix and parse
-	if (trimmed.startsWith(")]}'")) {
-		const cleaned = trimmed.replace(/^\)\]\}'[\r\n]*/, "").trim();
-		return JSON.parse(cleaned);
-	}
-
-	// Format B: HTML wrapper with postMessage
-	// Extract the string argument from: window.parent.postMessage('...', '*')
-	const postMessageMatch = trimmed.match(
-		/window\.parent\.postMessage\('((?:[^'\\]|\\.)*)'/,
-	);
-	if (postMessageMatch) {
-		// Unescape \xNN hex sequences and other JS escape sequences
-		const escaped = postMessageMatch[1];
-		const unescaped = escaped
-			.replace(/\\x([0-9a-fA-F]{2})/g, (_, hex) =>
-				String.fromCharCode(parseInt(hex, 16)),
-			)
-			.replace(/\\'/g, "'")
-			.replace(/\\\\/g, "\\")
-			.replace(/\\n/g, "\n");
-
-		return JSON.parse(unescaped);
-	}
-
-	// Fallback: try parsing as raw JSON
-	return JSON.parse(trimmed);
-}
-
-/**
- * The function to inject into a web page for fetching accounts.
+ * The function injected into a web page to fetch the account list.
  * Must be self-contained (no closures over external variables).
- *
- * Uses a recursive traversal to find account entries with 'gaia.l.a' marker,
- * which is more robust than fixed-index parsing.
  */
-function fetchAccountsInPageContext(url) {
-	return (async () => {
-		try {
-			const response = await fetch(url, { credentials: "include" });
-			if (!response.ok) return { error: `HTTP ${response.status}` };
+async function fetchListAccountsInPage(url) {
+	try {
+		const response = await fetch(url, { credentials: "include" });
+		if (!response.ok) return { error: `HTTP ${response.status}` };
+		return { text: await response.text() };
+	} catch (e) {
+		return { error: e.message };
+	}
+}
 
-			const text = await response.text();
-			let jsonString = text;
-
-			if (text.trim().startsWith("<!DOCTYPE") || text.trim().startsWith("<")) {
-				const match = text.match(
-					/window\.parent\.postMessage\s*\(\s*'([^']+)'/,
-				);
-				if (match) {
-					jsonString = match[1].replace(/\\x([0-9a-fA-F]{2})/g, (_, hex) =>
-						String.fromCharCode(parseInt(hex, 16)),
-					);
-				} else {
-					return { text }; // Return raw for parent to parse
-				}
-			} else {
-				jsonString = text.replace(/^\)\]\}'\s*/, "");
-			}
-
-			const data = JSON.parse(jsonString);
-			const accounts = [];
-			const seen = new Set();
-
-			function traverse(obj, depth) {
-				if (!obj || depth > 15) return;
-				if (Array.isArray(obj)) {
-					if (obj.length >= 5 && obj[0] === "gaia.l.a") {
-						const email = obj[3];
-						if (
-							email &&
-							typeof email === "string" &&
-							email.includes("@") &&
-							!seen.has(email)
-						) {
-							seen.add(email);
-							accounts.push({
-								index: accounts.length,
-								email,
-								name: obj[2] || email.split("@")[0],
-								photo:
-									typeof obj[4] === "string" && obj[4].startsWith("http")
-										? obj[4]
-										: "",
-							});
-						}
-					}
-					obj.forEach((item) => traverse(item, depth + 1));
-				} else if (typeof obj === "object") {
-					Object.values(obj).forEach((item) => traverse(item, depth + 1));
-				}
-			}
-
-			traverse(data, 0);
-			accounts.forEach((acc, i) => {
-				acc.index = i;
-			});
-			return { accounts };
-		} catch (e) {
-			return { error: e.message };
-		}
-	})();
+async function getCachedAccounts() {
+	const cached = await getStorage("accounts");
+	return cached.accounts || [];
 }
 
 /**
- * Fetch logged-in Google accounts from ListAccounts API.
+ * Fetch logged-in Google accounts from the ListAccounts endpoint.
  *
- * Strategy (v2 — performance optimized):
- *   1. Try to find an existing Google/YouTube tab that's fully loaded
- *   2. Inject the fetch script into that tab (fast — no tab creation)
- *   3. If no suitable tab exists and AVOID_TAB_CREATION is true, return cached accounts
- *   4. Fallback: create a temporary background tab on accounts.google.com
+ * Strategy:
+ *   1. Find an existing, fully loaded Google/YouTube tab
+ *   2. Inject the fetch into it (fast, invisible)
+ *   3. No such tab: with `allowTabCreation`, open a temporary background tab
+ *      on accounts.google.com; otherwise return the cached accounts
  *
+ * @param {Object} [options]
+ * @param {boolean} [options.allowTabCreation=false] - Only set this for
+ *   user-initiated detection. Automatic refreshes must not open tabs.
  * @returns {Promise<Array<{index: number, email: string, name: string, photo: string}>>}
  */
-export async function detectAccounts() {
+export async function detectAccounts({ allowTabCreation = false } = {}) {
 	let createdTabId = null;
 
 	try {
@@ -214,15 +105,13 @@ export async function detectAccounts() {
 
 		let targetTab = tabs.find((t) => t.active) || tabs[0];
 
-		// 2. If no suitable tab, check preferences
+		// 2. No suitable tab
 		if (!targetTab) {
-			if (DETECTION_CONFIG.AVOID_TAB_CREATION) {
+			if (!allowTabCreation) {
 				// Return cached accounts rather than creating a disruptive tab
-				const cached = await getStorage("accounts");
-				return cached.accounts || [];
+				return await getCachedAccounts();
 			}
 
-			// Fallback: create a temporary background tab
 			const newTab = await chrome.tabs.create({
 				url: "https://accounts.google.com/",
 				active: false,
@@ -232,37 +121,30 @@ export async function detectAccounts() {
 			targetTab = await chrome.tabs.get(newTab.id);
 		}
 
-		// 3. Execute detection script with timeout
-		const results = await Promise.race([
-			chrome.scripting.executeScript({
-				target: { tabId: targetTab.id, frameIds: [0] },
-				func: fetchAccountsInPageContext,
-				args: [LIST_ACCOUNTS_URL],
-			}),
-			new Promise((_, reject) =>
-				setTimeout(
-					() => reject(new Error("Script execution timeout")),
-					DETECTION_CONFIG.SCRIPT_EXEC_TIMEOUT,
-				),
-			),
-		]);
-
-		// 4. Clean up created tab
-		if (createdTabId) {
-			try {
-				await chrome.tabs.remove(createdTabId);
-			} catch {
-				/* ignore */
-			}
-			createdTabId = null;
+		// 3. Execute the fetch with a timeout
+		let timeoutId;
+		const timeout = new Promise((_, reject) => {
+			timeoutId = setTimeout(
+				() => reject(new Error("Script execution timeout")),
+				DETECTION_CONFIG.SCRIPT_EXEC_TIMEOUT,
+			);
+		});
+		let results;
+		try {
+			results = await Promise.race([
+				chrome.scripting.executeScript({
+					target: { tabId: targetTab.id, frameIds: [0] },
+					func: fetchListAccountsInPage,
+					args: [LIST_ACCOUNTS_URL],
+				}),
+				timeout,
+			]);
+		} finally {
+			clearTimeout(timeoutId);
 		}
 
-		// 5. Parse results
+		// 4. Parse the response
 		const result = results?.[0]?.result;
-
-		if (result?.accounts && result.accounts.length > 0) {
-			return result.accounts;
-		}
 
 		if (result?.error) {
 			console.warn(
@@ -270,34 +152,21 @@ export async function detectAccounts() {
 				result.error,
 			);
 		}
-
-		// Try fallback parsing if raw text was returned
 		if (result?.text) {
-			const data = parseListAccountsResponse(result.text);
-			const accountEntries = data?.[1];
-			if (Array.isArray(accountEntries) && accountEntries.length > 0) {
-				return accountEntries.map((entry, index) => ({
-					index,
-					name: entry[2] || "",
-					email: entry[3] || "",
-					photo: entry[4] || "",
-				}));
-			}
+			return parseAccounts(result.text);
 		}
-
 		return [];
 	} catch (error) {
 		console.error("[G-Account Switcher] Failed to detect accounts:", error);
 		// Return cached accounts on error
-		const cached = await getStorage("accounts");
-		return cached.accounts || [];
+		return await getCachedAccounts();
 	} finally {
-		// Clean up temporary tab if still exists
+		// Always close the temporary tab, whichever way we got here
 		if (createdTabId !== null) {
 			try {
 				await chrome.tabs.remove(createdTabId);
 			} catch {
-				/* ignore */
+				/* already closed */
 			}
 		}
 	}
@@ -305,27 +174,19 @@ export async function detectAccounts() {
 
 /**
  * Detect accounts and merge with existing stored accounts (preserving labels).
- * @returns {Promise<Array>} Updated accounts list, or null if detection failed
+ *
+ * @param {Object} [options]
+ * @param {boolean} [options.allowTabCreation=false] - See detectAccounts()
+ * @returns {Promise<Array|null>} Updated accounts list, or null if detection failed
  */
-export async function detectAndMergeAccounts() {
-	const detected = await detectAccounts();
+export async function detectAndMergeAccounts(options) {
+	const detected = await detectAccounts(options);
 	if (detected.length === 0) {
 		return null; // Signal that detection failed
 	}
 
 	const { accounts: existing = [] } = await getStorage("accounts");
-
-	// Merge: keep existing labels, update email/name/photo from detected
-	const merged = detected.map((det) => {
-		const existingAccount = existing.find((a) => a.index === det.index);
-		return {
-			index: det.index,
-			email: det.email,
-			name: det.name,
-			photo: det.photo,
-			label: existingAccount?.label || "", // Preserve user-set label
-		};
-	});
+	const merged = mergeAccounts(detected, existing);
 
 	await setStorage({ accounts: merged });
 	return merged;

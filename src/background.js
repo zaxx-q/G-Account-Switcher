@@ -7,11 +7,17 @@
  * 3. In proactive mode: listen to tabs.onUpdated for bare Google URLs
  * 4. Handle messages from popup (detect accounts, etc.)
  * 5. Cookie-based automatic account list refresh
- * 6. Migrate legacy storage keys on install/update
+ * 6. Remove data older versions left in storage.sync on install/update
+ *
+ * MV3 lifecycle: this worker is unloaded after ~30s of inactivity and woken
+ * by the next event. Listeners are registered synchronously at top level (so
+ * the waking event is delivered), but they must not assume settings are
+ * loaded yet: they `await settingsReady` first.
  */
 
 import { detectAndMergeAccounts } from "./lib/accounts.js";
 import { STORAGE_KEYS } from "./lib/constants.js";
+import { isGoogleHost } from "./lib/domains.js";
 import {
 	applyForceSwitch,
 	cleanupTab,
@@ -20,10 +26,20 @@ import {
 	restoreTabSyncStates,
 } from "./lib/proactive.js";
 import { applyRules } from "./lib/rules.js";
-import { getAllSettings } from "./lib/storage.js";
+import { getAllSettings, removeLegacySyncData } from "./lib/storage.js";
 
 // Track current settings in memory for the tabs.onUpdated listener
 let currentSettings = null;
+
+// Resolves once the first read of storage has finished. If a storage change
+// lands first, its (newer) value is kept.
+const settingsReady = getAllSettings()
+	.then((settings) => {
+		currentSettings ??= settings;
+	})
+	.catch((error) => {
+		console.error("[G-Account Switcher] Could not load settings:", error);
+	});
 
 // ========== COOKIE-BASED ACCOUNT CHANGE DETECTION ==========
 
@@ -35,7 +51,7 @@ let cookieRefreshTimeout = null;
 
 chrome.cookies.onChanged.addListener(({ cookie, removed }) => {
 	// Only care about Google auth cookies
-	if (!cookie.domain.includes("google.com")) return;
+	if (!isGoogleHost(cookie.domain)) return;
 	if (!GOOGLE_AUTH_COOKIES.includes(cookie.name)) return;
 
 	// Debounce — wait for all cookie changes to settle
@@ -45,61 +61,15 @@ chrome.cookies.onChanged.addListener(({ cookie, removed }) => {
 		console.log(
 			"[G-Account Switcher] Refreshing accounts due to auth cookie change",
 		);
-		await detectAndMergeAccounts();
+		try {
+			// Never opens a tab: automatic refreshes use existing tabs only
+			await detectAndMergeAccounts();
+		} catch (error) {
+			console.error("[G-Account Switcher] Account refresh failed:", error);
+		}
 		// Badge updates via storage.onChanged listener
 	}, 2000);
 });
-
-// ========== MIGRATION ==========
-
-/**
- * Migrate legacy storage keys from v2 (siteOverrides) to v3 (siteSettings).
- * Also sets globalAccountEnabled for existing users so behavior doesn't change.
- */
-async function migrateStorage() {
-	const data = await chrome.storage.sync.get(null);
-
-	const updates = {};
-	let needsUpdate = false;
-
-	// Migrate siteOverrides → siteSettings
-	if (data.siteOverrides && !data.siteSettings) {
-		updates.siteSettings = data.siteOverrides;
-		needsUpdate = true;
-	}
-
-	// Existing users who had a defaultAccount set: enable global for them
-	// so their behavior doesn't change after the update
-	if (
-		data.defaultAccount !== undefined &&
-		data.globalAccountEnabled === undefined
-	) {
-		updates.globalAccountEnabled = true;
-		needsUpdate = true;
-	}
-
-	// Migrate settings for rebranded domains (notebooklm.google.com → notebook.google.com)
-	const currentSiteSettings = updates.siteSettings || data.siteSettings;
-	if (
-		currentSiteSettings?.["notebooklm.google.com"] !== undefined &&
-		currentSiteSettings?.["notebook.google.com"] === undefined
-	) {
-		updates.siteSettings = {
-			...currentSiteSettings,
-			"notebook.google.com": currentSiteSettings["notebooklm.google.com"],
-		};
-		needsUpdate = true;
-	}
-
-	if (needsUpdate) {
-		await chrome.storage.sync.set(updates);
-		// Clean up legacy key
-		if (data.siteOverrides) {
-			await chrome.storage.sync.remove("siteOverrides");
-		}
-		console.log("[G-Account Switcher] Migrated storage:", Object.keys(updates));
-	}
-}
 
 // ========== INITIALIZATION ==========
 
@@ -108,7 +78,8 @@ async function migrateStorage() {
  */
 async function initialize() {
 	try {
-		currentSettings = await getAllSettings();
+		await settingsReady;
+		if (!currentSettings) return;
 
 		// Apply declarativeNetRequest rules
 		await applyRules(
@@ -120,19 +91,6 @@ async function initialize() {
 
 		// Update badge
 		updateBadge(currentSettings);
-
-		// Restore per-tab sync state for existing tabs.
-		// MV3 service workers are killed after ~30s of inactivity, wiping
-		// the in-memory tabSyncedStates Map. Without this restore step,
-		// the next tab event would think every tab is a "first visit" and
-		// redirect it — causing the user to lose progress.
-		if (currentSettings.enabled && currentSettings.mode === "proactive") {
-			await restoreTabSyncStates(
-				currentSettings.defaultAccount,
-				currentSettings.siteSettings,
-				currentSettings.globalAccountEnabled,
-			);
-		}
 
 		console.log("[G-Account Switcher] Initialized");
 	} catch (error) {
@@ -167,7 +125,7 @@ function updateBadge(settings) {
  * Handle storage changes — re-apply rules when relevant settings change.
  */
 chrome.storage.onChanged.addListener(async (changes, areaName) => {
-	if (areaName !== "sync") return;
+	if (areaName !== "local") return;
 
 	const relevantKeys = [
 		STORAGE_KEYS.ENABLED,
@@ -191,12 +149,16 @@ chrome.storage.onChanged.addListener(async (changes, areaName) => {
 
 	// Re-apply rules if a rule-relevant setting changed
 	if (hasRelevantChange) {
-		await applyRules(
-			currentSettings.defaultAccount,
-			currentSettings.siteSettings,
-			currentSettings.enabled,
-			currentSettings.globalAccountEnabled,
-		);
+		try {
+			await applyRules(
+				currentSettings.defaultAccount,
+				currentSettings.siteSettings,
+				currentSettings.enabled,
+				currentSettings.globalAccountEnabled,
+			);
+		} catch (error) {
+			console.error("[G-Account Switcher] Could not apply rules:", error);
+		}
 		updateBadge(currentSettings);
 		// Clear global state tracker so that new target accounts are instantly resynced
 		clearSyncedState();
@@ -213,7 +175,7 @@ chrome.storage.onChanged.addListener(async (changes, areaName) => {
 				currentWindow: true,
 			});
 			if (activeTab?.id && activeTab?.url) {
-				const _redirected = await handleProactiveRedirect(
+				await handleProactiveRedirect(
 					activeTab.id,
 					activeTab.url,
 					currentSettings.defaultAccount,
@@ -237,7 +199,8 @@ chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, _tab) => {
 	if (!changeInfo.url) return;
 	const url = changeInfo.url;
 
-	// Wait for settings to be loaded
+	// A worker woken by this very event may not have loaded settings yet
+	await settingsReady;
 	if (!currentSettings) return;
 
 	// Skip if disabled or not in proactive mode
@@ -264,7 +227,8 @@ chrome.tabs.onRemoved.addListener((tabId) => {
  */
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
 	if (message.type === "detectAccounts") {
-		detectAndMergeAccounts()
+		// User clicked Detect: opening a temporary tab is acceptable here
+		detectAndMergeAccounts({ allowTabCreation: true })
 			.then((accounts) => {
 				sendResponse({ success: accounts !== null, accounts });
 			})
@@ -310,14 +274,33 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
 });
 
 /**
- * On install or update: migrate storage, detect accounts, and initialize.
+ * On install or update: clear legacy synced data, detect accounts, and initialize.
  */
-chrome.runtime.onInstalled.addListener(async () => {
-	// Migrate legacy storage keys first
-	await migrateStorage();
+chrome.runtime.onInstalled.addListener(async (details) => {
+	// Versions before 3.3.0 kept their data in storage.sync; it is not carried
+	// over, so remove it rather than leave e-mail addresses behind.
+	try {
+		await removeLegacySyncData();
+	} catch (error) {
+		console.error("[G-Account Switcher] Could not remove legacy data:", error);
+	}
 	// Detect accounts on install/update (fresh detection)
 	await detectAndMergeAccounts();
 	await initialize();
+
+	// The per-tab tracker starts empty after an install or update. Mark the
+	// Google tabs that are already open as synced so they are not redirected
+	// (and lose their place) on their next navigation.
+	if (details.reason === "install" || details.reason === "update") {
+		const settings = await getAllSettings();
+		if (settings.enabled && settings.mode === "proactive") {
+			await restoreTabSyncStates(
+				settings.defaultAccount,
+				settings.siteSettings,
+				settings.globalAccountEnabled,
+			);
+		}
+	}
 });
 
 /**

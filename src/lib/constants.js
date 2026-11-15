@@ -9,9 +9,10 @@
  *     Entries with queryMatch take precedence over generic entries for the same host.
  *   - siteKey: (optional) custom key for siteSettings storage when multiple entries
  *     share the same host (e.g., 'www.google.com/maps', 'www.google.com/ai').
- *   - stripsParam: (optional) true if the site strips the authuser= parameter
- *     from the URL after reading it into session cookies (e.g., YouTube, Play Store).
- *     This triggers TTL-based anti-loop caching in proactive mode.
+ *   - stripsParam: (optional, informational) true if the site strips the
+ *     authuser= parameter from the URL after reading it (e.g., YouTube, Play
+ *     Store, Docs). Nothing branches on it: every site gets the same per-tab
+ *     anti-loop tracking (see tab-state.js), which is what copes with this.
  *
  * Based on real-world URL patterns:
  *   https://mail.google.com/mail/u/1/
@@ -62,7 +63,7 @@ export const GOOGLE_DOMAINS = [
 	{ host: "meet.google.com", type: "path", pathPrefix: "" },
 
 	// AI / ML
-	{ host: "aistudio.google.com", type: "query" },
+	{ host: "aistudio.google.com", type: "path", pathPrefix: "" },
 	{ host: "gemini.google.com", type: "path", pathPrefix: "" },
 
 	// Developer & Cloud
@@ -176,15 +177,6 @@ export function getSiteKey(domain) {
 }
 
 /**
- * Unique host patterns for manifest host_permissions and URL matching.
- */
-export const ALL_GOOGLE_HOST_PATTERNS = [
-	"*://*.google.com/*",
-	"*://*.youtube.com/*",
-	"*://*.googleapis.com/*",
-];
-
-/**
  * Default storage values.
  */
 export const STORAGE_DEFAULTS = {
@@ -193,7 +185,7 @@ export const STORAGE_DEFAULTS = {
 	defaultAccount: 0,
 	globalAccountEnabled: false, // Global default is OFF by default (per-site first)
 	accounts: [], // [{ index: 0, email: '', label: '' }, ...]
-	siteSettings: {}, // { 'youtube.com': 2, 'mail.google.com': 0, ... }
+	siteSettings: {}, // { 'www.youtube.com': 2, 'mail.google.com': 0, ... }
 };
 
 /**
@@ -225,13 +217,3 @@ export const SITE_DISABLED = -1;
  */
 export const LIST_ACCOUNTS_URL =
 	"https://accounts.google.com/ListAccounts?gpsia=1&source=ogb&mo=1";
-
-/**
- * Regex patterns for matching /u/X/ and authuser=X in URLs.
- */
-export const URL_PATTERNS = {
-	// Matches /u/ followed by a digit
-	PATH_ACCOUNT: /\/u\/(\d+)(\/|$)/,
-	// Matches authuser= followed by a digit(s)
-	QUERY_ACCOUNT: /[?&]authuser=(\d+)/,
-};

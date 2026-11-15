@@ -698,12 +698,14 @@ body {
 	flex-shrink: 0;
 }
 
-.site-setting-item:hover .site-setting-actions {
+.site-setting-item:hover .site-setting-actions,
+.site-setting-item:focus-within .site-setting-actions {
 	opacity: 1;
 }
 
-/* Inline edit select (appears on edit click) */
-.site-setting-inline-select {
+/* Inline edit controls (appear on edit click) */
+.site-setting-inline-select,
+.account-inline-input {
 	width: 100%;
 	padding: 3px 6px;
 	border: 1px solid var(--accent);
@@ -862,4 +864,12 @@ body {
 .account-list::-webkit-scrollbar-track,
 .site-setting-list::-webkit-scrollbar-track {
 	background: transparent;
+}
+
+/* Visible keyboard focus for buttons and the collapsible header */
+.btn:focus-visible,
+.site-account-icon:focus-visible,
+.global-header:focus-visible {
+	outline: 2px solid var(--accent);
+	outline-offset: 1px;
 }

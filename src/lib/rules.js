@@ -8,17 +8,33 @@
  *   1–500   : Global rules (default account, only when globalAccountEnabled)
  *   501–1000: Per-site rules (higher priority)
  *   1001–1010: Special-case redirect rules (gmail.com → mail.google.com)
+ *
+ * Priority scheme (higher wins when several rules match one URL):
+ *   tier base + specificity
+ *   - tier base:   global 10, per-site 30, special 50
+ *   - specificity: 0 catch-all, +1 pathPrefix, +2 queryMatch
+ *
+ * A per-site rule always beats a global rule, and within a tier the more
+ * specific entry wins (e.g. Maps over Search on www.google.com). Making this
+ * explicit means no two overlapping rules ever tie, so the result never
+ * depends on rule ordering or on a browser's tie-breaking.
  */
 import { GOOGLE_DOMAINS, getSiteKey, SITE_DISABLED } from "./constants.js";
 
 const GLOBAL_RULE_BASE = 1;
 const SITE_RULE_BASE = 501;
 const SPECIAL_RULE_BASE = 1001;
-const GLOBAL_PRIORITY = 1;
-const GLOBAL_QUERYMATCH_PRIORITY = 2;
-const SITE_PRIORITY = 3;
-const SITE_QUERYMATCH_PRIORITY = 4;
-const SPECIAL_PRIORITY = 5;
+const GLOBAL_PRIORITY = 10;
+const SITE_PRIORITY = 30;
+const SPECIAL_PRIORITY = 50;
+
+/**
+ * How specific a domain entry is: queryMatch > pathPrefix > catch-all.
+ */
+function specificity(domain) {
+	if (domain.queryMatch) return 2;
+	return domain.pathPrefix ? 1 : 0;
+}
 
 /**
  * Escape a string for use in a regex pattern.
@@ -56,18 +72,28 @@ function buildPathRule(id, priority, host, pathPrefix, accountNum) {
 }
 
 /**
+ * Regex fragment that sits between the host and the `[?&]param=` part.
+ *
+ * Without a prefix any path is allowed. With one, the prefix must end at a
+ * path boundary, so "/maps" matches "/maps" and "/maps/place/x" but not
+ * "/mapsfoo".
+ */
+function pathPrefixPattern(pathPrefix) {
+	return pathPrefix ? `${escapeRegex(pathPrefix)}(?:[/?#].*)?` : ".*";
+}
+
+/**
  * Build a query-based redirect rule for authuser=X rewriting.
  *
  * Example for www.google.com:
- *   regexFilter:       ^(https?://www\.google\.com/.*[?&]authuser=)\d+(.*)$
+ *   regexFilter:       ^(https?://www\.google\.com.*[?&]authuser=)\d+(.*)$
  *   regexSubstitution: \1{accountNum}\2
  *
  * For domains with pathPrefix (e.g. search.google.com/search-console):
- *   regexFilter:       ^(https?://search\.google\.com/search-console.*[?&]authuser=)\d+(.*)$
+ *   regexFilter:       ^(https?://search\.google\.com/search-console(?:[/?#].*)?[?&]authuser=)\d+(.*)$
  */
 function buildQueryRule(id, priority, host, accountNum, pathPrefix = "") {
 	const escapedHost = escapeRegex(host);
-	const escapedPrefix = pathPrefix ? escapeRegex(pathPrefix) : "";
 
 	return {
 		id,
@@ -79,7 +105,7 @@ function buildQueryRule(id, priority, host, accountNum, pathPrefix = "") {
 			},
 		},
 		condition: {
-			regexFilter: `^(https?://${escapedHost}${escapedPrefix}.*[?&]authuser=)\\d+(.*)$`,
+			regexFilter: `^(https?://${escapedHost}${pathPrefixPattern(pathPrefix)}[?&]authuser=)\\d+(.*)$`,
 			requestDomains: [host],
 			resourceTypes: ["main_frame", "sub_frame"],
 		},
@@ -123,7 +149,7 @@ function buildQueryMatchRules(
 	pathPrefix = "",
 ) {
 	const escapedHost = escapeRegex(host);
-	const escapedPrefix = pathPrefix ? escapeRegex(pathPrefix) : "";
+	const prefixPattern = pathPrefixPattern(pathPrefix);
 	const escapedKey = escapeRegex(qmKey);
 	const escapedVal = escapeRegex(qmValue);
 
@@ -138,7 +164,7 @@ function buildQueryMatchRules(
 				redirect: { regexSubstitution: `\\1${accountNum}\\2` },
 			},
 			condition: {
-				regexFilter: `^(https?://${escapedHost}${escapedPrefix}.*[?&]${escapedKey}=${escapedVal}&(?:.*&)?authuser=)\\d+(.*)$`,
+				regexFilter: `^(https?://${escapedHost}${prefixPattern}[?&]${escapedKey}=${escapedVal}&(?:.*&)?authuser=)\\d+(.*)$`,
 				requestDomains: [host],
 				resourceTypes: ["main_frame", "sub_frame"],
 			},
@@ -153,7 +179,7 @@ function buildQueryMatchRules(
 				redirect: { regexSubstitution: `\\1${accountNum}\\2` },
 			},
 			condition: {
-				regexFilter: `^(https?://${escapedHost}${escapedPrefix}.*[?&]authuser=)\\d+((?:.*&)${escapedKey}=${escapedVal}(?:[&#].*|$))$`,
+				regexFilter: `^(https?://${escapedHost}${prefixPattern}[?&]authuser=)\\d+((?:.*&)${escapedKey}=${escapedVal}(?:[&#].*|$))$`,
 				requestDomains: [host],
 				resourceTypes: ["main_frame", "sub_frame"],
 			},
@@ -162,19 +188,19 @@ function buildQueryMatchRules(
 }
 
 /**
- * Build special-case redirect rules for gmail.com → mail.google.com.
+ * Build the special-case redirect rule for gmail.com → mail.google.com.
  *
- * Gmail has shortcut domains (gmail.com, www.gmail.com) that should
- * redirect directly to the correct account path.
+ * Gmail has a shortcut domain (gmail.com) that should redirect directly to
+ * the correct account path. The `||` anchor matches the domain and every
+ * subdomain, so this one rule also covers www.gmail.com.
  *
  * @param {number} accountNum - Target account index
  * @returns {Array} Array of redirect rules
  */
 function buildGmailRedirectRules(accountNum) {
-	let ruleId = SPECIAL_RULE_BASE;
 	return [
 		{
-			id: ruleId++,
+			id: SPECIAL_RULE_BASE,
 			priority: SPECIAL_PRIORITY,
 			action: {
 				type: "redirect",
@@ -182,18 +208,6 @@ function buildGmailRedirectRules(accountNum) {
 			},
 			condition: {
 				urlFilter: "||gmail.com^",
-				resourceTypes: ["main_frame"],
-			},
-		},
-		{
-			id: ruleId++,
-			priority: SPECIAL_PRIORITY,
-			action: {
-				type: "redirect",
-				redirect: { url: `https://mail.google.com/mail/u/${accountNum}/` },
-			},
-			condition: {
-				urlFilter: "||www.gmail.com^",
 				resourceTypes: ["main_frame"],
 			},
 		},
@@ -245,7 +259,7 @@ export function generateRules(
 				rules.push(
 					buildPathRule(
 						siteId++,
-						SITE_PRIORITY,
+						SITE_PRIORITY + specificity(domain),
 						domain.host,
 						domain.pathPrefix,
 						accountNum,
@@ -256,7 +270,7 @@ export function generateRules(
 				rules.push(
 					...buildQueryMatchRules(
 						siteId,
-						SITE_QUERYMATCH_PRIORITY,
+						SITE_PRIORITY + specificity(domain),
 						domain.host,
 						accountNum,
 						domain.queryMatch.key,
@@ -269,7 +283,7 @@ export function generateRules(
 				rules.push(
 					buildQueryRule(
 						siteId++,
-						SITE_PRIORITY,
+						SITE_PRIORITY + specificity(domain),
 						domain.host,
 						accountNum,
 						domain.pathPrefix || "",
@@ -282,7 +296,7 @@ export function generateRules(
 				rules.push(
 					buildPathRule(
 						globalId++,
-						GLOBAL_PRIORITY,
+						GLOBAL_PRIORITY + specificity(domain),
 						domain.host,
 						domain.pathPrefix,
 						defaultAccount,
@@ -293,7 +307,7 @@ export function generateRules(
 				rules.push(
 					...buildQueryMatchRules(
 						globalId,
-						GLOBAL_QUERYMATCH_PRIORITY,
+						GLOBAL_PRIORITY + specificity(domain),
 						domain.host,
 						defaultAccount,
 						domain.queryMatch.key,
@@ -306,7 +320,7 @@ export function generateRules(
 				rules.push(
 					buildQueryRule(
 						globalId++,
-						GLOBAL_PRIORITY,
+						GLOBAL_PRIORITY + specificity(domain),
 						domain.host,
 						defaultAccount,
 						domain.pathPrefix || "",
@@ -331,15 +345,40 @@ export function generateRules(
 	return rules;
 }
 
+/** Tail of the applyRules() queue; see applyRules(). */
+let applyQueue = Promise.resolve();
+
 /**
  * Apply new rules by removing all existing dynamic rules and adding new ones.
+ *
+ * Calls are serialized: each one waits for the previous to finish. Without
+ * this, two quick settings changes make two overlapping read-modify-write
+ * cycles on the dynamic rule set, and the second fails with
+ * "Rule with id N does not have a unique ID".
  *
  * @param {number} defaultAccount
  * @param {Object} siteSettings
  * @param {boolean} enabled
  * @param {boolean} globalAccountEnabled
+ * @returns {Promise<void>}
  */
-export async function applyRules(
+export function applyRules(
+	defaultAccount,
+	siteSettings,
+	enabled,
+	globalAccountEnabled,
+) {
+	const run = () =>
+		applyRulesNow(defaultAccount, siteSettings, enabled, globalAccountEnabled);
+	const result = applyQueue.then(run);
+	// Keep the queue alive even if this call fails; the caller still sees
+	// the rejection through `result`.
+	applyQueue = result.catch(() => {});
+	return result;
+}
+
+
+async function applyRulesNow(
 	defaultAccount,
 	siteSettings,
 	enabled,
@@ -365,6 +404,6 @@ export async function applyRules(
 
 	console.log(
 		`[G-Account Switcher] Applied ${addRules.length} rules (default: ${defaultAccount}, ` +
-			`sites: ${Object.keys(siteSettings).length}, global: ${globalAccountEnabled}, enabled: ${enabled})`,
+			`sites: ${Object.keys(siteSettings || {}).length}, global: ${globalAccountEnabled}, enabled: ${enabled})`,
 	);
 }

@@ -12,6 +12,7 @@ import {
 	SITE_DISABLED,
 	STORAGE_KEYS,
 } from "../lib/constants.js";
+import { findMatchingDomain, isGoogleHost } from "../lib/domains.js";
 import { getStorage, setStorage } from "../lib/storage.js";
 
 // ─── DOM References ───
@@ -40,7 +41,6 @@ const currentSiteSection = document.getElementById("currentSiteSection");
 const siteAccountIconsEl = document.getElementById("siteAccountIcons");
 const currentSiteName = document.getElementById("currentSiteName");
 const currentSiteStatus = document.getElementById("currentSiteStatus");
-const _globalSection = document.getElementById("globalSection");
 const globalHeader = document.getElementById("globalHeader");
 const globalArrow = document.getElementById("globalArrow");
 const globalBody = document.getElementById("globalBody");
@@ -89,56 +89,11 @@ function getShortLabel(account) {
 
 /**
  * Find the matching domain config for the current tab's URL.
+ * The popup also treats gmail.com as Gmail.
  */
 function findCurrentSiteDomain(url) {
 	if (!url) return null;
-	try {
-		const parsed = new URL(url);
-		const host = parsed.hostname;
-
-		// Handle gmail.com → mail.google.com mapping
-		if (host === "gmail.com" || host.endsWith(".gmail.com")) {
-			return GOOGLE_DOMAINS.find((d) => d.host === "mail.google.com");
-		}
-
-		// Find matching domains
-		const matches = GOOGLE_DOMAINS.filter(
-			(d) => d.host === host && d.type !== "excluded",
-		);
-		if (matches.length === 0) return null;
-
-		// Priority 1: queryMatch entries (e.g., udm=50 for AI mode)
-		const withQueryMatch = matches.filter((d) => {
-			if (!d.queryMatch) return false;
-			const pathOk = !d.pathPrefix || parsed.pathname.startsWith(d.pathPrefix);
-			return (
-				pathOk &&
-				parsed.searchParams.get(d.queryMatch.key) === d.queryMatch.value
-			);
-		});
-		if (withQueryMatch.length > 0) return withQueryMatch[0];
-
-		// Priority 2: specific (non-empty) pathPrefix match across ALL types
-		const specificMatches = matches
-			.filter(
-				(d) =>
-					d.pathPrefix &&
-					!d.queryMatch &&
-					parsed.pathname.startsWith(d.pathPrefix),
-			)
-			.sort(
-				(a, b) => (b.pathPrefix || "").length - (a.pathPrefix || "").length,
-			);
-		if (specificMatches.length > 0) return specificMatches[0];
-
-		// Priority 3: catchall entries (empty/no pathPrefix, no queryMatch)
-		const catchall = matches.find((d) => !d.pathPrefix && !d.queryMatch);
-		if (catchall) return catchall;
-
-		return null;
-	} catch {
-		return null;
-	}
+	return findMatchingDomain(url, { resolveGmailAlias: true });
 }
 
 /**
@@ -227,20 +182,7 @@ function createAccountSiteIcon(account, isSelected) {
 	// Avatar
 	const avatar = document.createElement("div");
 	avatar.className = "account-avatar";
-
-	if (account.photo) {
-		const img = document.createElement("img");
-		img.src = account.photo;
-		img.alt = account.name || account.email || "";
-		img.referrerPolicy = "no-referrer";
-		img.onerror = () => {
-			img.replaceWith(createInitialsEl(account));
-		};
-		avatar.appendChild(img);
-	} else {
-		avatar.appendChild(createInitialsEl(account));
-	}
-
+	fillAvatar(avatar, account);
 	btn.appendChild(avatar);
 
 	// Index badge
@@ -381,20 +323,7 @@ function renderAccounts(accounts) {
 		// Avatar (profile picture or initials)
 		const avatar = document.createElement("div");
 		avatar.className = "account-avatar";
-
-		if (account.photo) {
-			const img = document.createElement("img");
-			img.src = account.photo;
-			img.alt = account.name || account.email || "";
-			img.referrerPolicy = "no-referrer";
-			img.onerror = () => {
-				// Fallback to initials on load error
-				img.replaceWith(createInitialsEl(account));
-			};
-			avatar.appendChild(img);
-		} else {
-			avatar.appendChild(createInitialsEl(account));
-		}
+		fillAvatar(avatar, account);
 
 		const info = document.createElement("div");
 		info.className = "account-info";
@@ -428,15 +357,17 @@ function renderAccounts(accounts) {
 		editBtn.className = "btn btn-sm";
 		editBtn.textContent = "✏️";
 		editBtn.title = "Edit label";
+		editBtn.setAttribute("aria-label", "Edit label");
 		editBtn.addEventListener("click", (e) => {
 			e.stopPropagation();
-			editAccountLabel(account);
+			startLabelEdit(account, info);
 		});
 
 		const deleteBtn = document.createElement("button");
 		deleteBtn.className = "btn btn-danger btn-sm";
 		deleteBtn.textContent = "✕";
 		deleteBtn.title = "Remove";
+		deleteBtn.setAttribute("aria-label", "Remove account");
 		deleteBtn.addEventListener("click", (e) => {
 			e.stopPropagation();
 			removeAccount(account.index);
@@ -451,6 +382,25 @@ function renderAccounts(accounts) {
 
 		accountListEl.appendChild(item);
 	});
+}
+
+/**
+ * Put an account's profile picture (or, failing that, its initials) into
+ * `container`. A picture that fails to load is swapped for the initials.
+ */
+function fillAvatar(container, account) {
+	if (account.photo) {
+		const img = document.createElement("img");
+		img.src = account.photo;
+		img.alt = account.name || account.email || "";
+		img.referrerPolicy = "no-referrer";
+		img.onerror = () => {
+			img.replaceWith(createInitialsEl(account));
+		};
+		container.appendChild(img);
+	} else {
+		container.appendChild(createInitialsEl(account));
+	}
 }
 
 /**
@@ -492,11 +442,7 @@ function refreshCurrentTabNow() {
 	if (!currentTab?.url) return;
 	try {
 		const url = new URL(currentTab.url);
-		const isGoogle =
-			url.hostname.includes("google.com") ||
-			url.hostname.includes("youtube.com") ||
-			url.hostname.includes("gmail.com");
-		if (isGoogle) {
+		if (isGoogleHost(url.hostname)) {
 			showStatus("Refreshing page...", "info");
 			chrome.runtime.sendMessage({ type: "refreshTab", tabId: currentTab.id });
 		}
@@ -523,23 +469,50 @@ async function removeAccount(index) {
 	showStatus("Account removed", "info");
 }
 
-function editAccountLabel(account) {
-	const newLabel = prompt("Enter label for this account:", account.label || "");
-	if (newLabel === null) return; // Cancelled
+/**
+ * Edit an account's label in place (Enter or clicking away saves, Escape
+ * cancels). Replaces window.prompt(), which is unreliable inside extension
+ * popups.
+ */
+function startLabelEdit(account, infoEl) {
+	const input = document.createElement("input");
+	input.type = "text";
+	input.className = "account-inline-input";
+	input.value = account.label || "";
+	input.placeholder = "Work, Personal...";
+	input.maxLength = 32;
+	input.setAttribute("aria-label", "Account label");
 
-	const accounts = currentSettings.accounts.map((a) => {
-		if (a.index === account.index) {
-			return { ...a, label: newLabel };
+	infoEl.textContent = "";
+	infoEl.appendChild(input);
+	input.focus();
+	input.select();
+
+	let finished = false;
+	const finish = async (save) => {
+		if (finished) return;
+		finished = true;
+
+		const label = input.value.trim();
+		if (save && label !== (account.label || "")) {
+			const accounts = (currentSettings.accounts || []).map((a) =>
+				a.index === account.index ? { ...a, label } : a,
+			);
+			currentSettings.accounts = accounts;
+			await setStorage({ [STORAGE_KEYS.ACCOUNTS]: accounts });
+			showStatus("Label updated", "success");
 		}
-		return a;
-	});
 
-	currentSettings.accounts = accounts;
-	setStorage({ [STORAGE_KEYS.ACCOUNTS]: accounts });
-	renderAccounts(accounts);
-	renderCurrentSite();
-	renderGlobalSection();
-	showStatus("Label updated", "success");
+		renderAccounts(currentSettings.accounts);
+		renderCurrentSite();
+		renderGlobalSection();
+	};
+
+	input.addEventListener("keydown", (e) => {
+		if (e.key === "Enter") finish(true);
+		else if (e.key === "Escape") finish(false);
+	});
+	input.addEventListener("blur", () => finish(true));
 }
 
 // ─── Add Account ───
@@ -619,17 +592,8 @@ function renderSiteSettings(siteSettings, accounts) {
 		} else {
 			avatar.className = "site-setting-avatar";
 			const acc = accounts?.find((a) => a.index === accountIndex);
-			if (acc?.photo) {
-				const img = document.createElement("img");
-				img.src = acc.photo;
-				img.alt = acc.name || acc.email || "";
-				img.referrerPolicy = "no-referrer";
-				img.onerror = () => {
-					img.replaceWith(createInitialsEl(acc));
-				};
-				avatar.appendChild(img);
-			} else if (acc) {
-				avatar.appendChild(createInitialsEl(acc));
+			if (acc) {
+				fillAvatar(avatar, acc);
 			} else {
 				const initialsEl = document.createElement("span");
 				initialsEl.className = "account-initials";
@@ -669,6 +633,7 @@ function renderSiteSettings(siteSettings, accounts) {
 		editBtn.className = "btn btn-sm";
 		editBtn.textContent = "✏️";
 		editBtn.title = "Change account";
+		editBtn.setAttribute("aria-label", `Change account for ${host}`);
 		editBtn.addEventListener("click", (e) => {
 			e.stopPropagation();
 			startInlineEdit(host, accountIndex, info);
@@ -678,6 +643,7 @@ function renderSiteSettings(siteSettings, accounts) {
 		delBtn.className = "btn btn-danger btn-sm";
 		delBtn.textContent = "✕";
 		delBtn.title = "Remove setting";
+		delBtn.setAttribute("aria-label", `Remove setting for ${host}`);
 		delBtn.addEventListener("click", (e) => {
 			e.stopPropagation();
 			removeSiteSetting(host);
@@ -819,7 +785,7 @@ async function saveNewSiteSetting() {
 		accountIndex < -1 ||
 		accountIndex > MAX_ACCOUNT_INDEX
 	) {
-		showStatus(`Account index must be -1 to ${MAX_ACCOUNT_INDEX}`, "error");
+		showStatus(`Account must be 0-${MAX_ACCOUNT_INDEX}, or -1 to disable`, "error");
 		return;
 	}
 
@@ -896,6 +862,7 @@ function toggleGlobalBody() {
 		globalBody.classList.add("hidden");
 		globalArrow.classList.remove("expanded");
 	}
+	globalHeader.setAttribute("aria-expanded", String(isHidden));
 }
 
 // ─── Account Detection ───
@@ -917,7 +884,7 @@ async function handleDetect() {
 			showStatus(`Found ${response.accounts.length} account(s)`, "success");
 		} else {
 			showStatus(
-				"Could not detect accounts. Are you logged in to Google?",
+				"Could not detect accounts. Sign in to Google and try again.",
 				"error",
 			);
 		}
@@ -963,6 +930,12 @@ cancelSiteSettingBtn.addEventListener("click", () =>
 
 // Global section — collapsible header
 globalHeader.addEventListener("click", toggleGlobalBody);
+globalHeader.addEventListener("keydown", (e) => {
+	if (e.key === "Enter" || e.key === " ") {
+		e.preventDefault();
+		toggleGlobalBody();
+	}
+});
 
 // Global account enabled toggle
 globalAccountToggle.addEventListener("change", async (e) => {

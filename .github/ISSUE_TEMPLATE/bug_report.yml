@@ -1,0 +1,52 @@
+name: Bug report
+description: Something is not switching to the account you expected
+labels: [bug]
+body:
+  - type: dropdown
+    id: browser
+    attributes:
+      label: Browser
+      options: [Chrome, Edge, Brave, Firefox, Other Chromium]
+    validations:
+      required: true
+  - type: input
+    id: versions
+    attributes:
+      label: Browser and extension versions
+      placeholder: "Chrome 131, extension 3.2.1"
+    validations:
+      required: true
+  - type: dropdown
+    id: mode
+    attributes:
+      label: Mode
+      options: [Proactive, Passive]
+    validations:
+      required: true
+  - type: input
+    id: site
+    attributes:
+      label: Site and example URL
+      description: Remove anything private from the URL (document IDs, search terms).
+      placeholder: "https://docs.google.com/document/d/…"
+    validations:
+      required: true
+  - type: textarea
+    id: settings
+    attributes:
+      label: Your settings for that site
+      description: Which account is assigned to the site, and is the global default on?
+  - type: textarea
+    id: expected
+    attributes:
+      label: What did you expect, and what happened instead?
+    validations:
+      required: true
+  - type: textarea
+    id: console
+    attributes:
+      label: Background console output (optional)
+      description: >-
+        Chrome: chrome://extensions → Details → "Inspect views: service worker".
+        Firefox: about:debugging → This Firefox → Inspect.
+      render: shell

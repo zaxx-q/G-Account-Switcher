@@ -13,7 +13,7 @@
       <h1 class="title">G-Account Switcher</h1>
       <div class="toggle-wrap">
         <label class="toggle" for="enableToggle">
-          <input type="checkbox" id="enableToggle" checked>
+          <input type="checkbox" id="enableToggle" aria-label="Enable G-Account Switcher" checked>
           <span class="toggle-slider"></span>
         </label>
       </div>
@@ -56,7 +56,7 @@
         </select>
       </div>
       <div class="form-row">
-        <label for="settingAccount" class="form-label">Account</label>
+        <label for="settingAccount" class="form-label" title="0-9 selects an account; -1 disables redirection for the site">Account</label>
         <input type="number" id="settingAccount" class="input input-sm" min="-1" max="9" value="0">
       </div>
       <div class="form-actions">
@@ -104,7 +104,7 @@
 
     <!-- Global Default (collapsible, off by default) -->
     <div class="section global-section" id="globalSection">
-      <div class="global-header" id="globalHeader">
+      <div class="global-header" id="globalHeader" role="button" tabindex="0" aria-expanded="false" aria-controls="globalBody">
         <span class="global-toggle-arrow" id="globalArrow">▸</span>
         <span class="section-title">Global Default</span>
         <span class="global-status" id="globalStatusBadge">off</span>

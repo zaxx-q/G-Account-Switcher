@@ -57,10 +57,9 @@ export const GOOGLE_DOMAINS = [
 	{ host: "notifications.google.com", type: "path", pathPrefix: "" },
 
 	// Communication
-	// Google Meet: new meeting links use /meet/<code>?authuser=X;
-	// the home page and legacy links still use /u/X/ (kept as path fallback)
-	{ host: "meet.google.com", type: "query", pathPrefix: "/meet" },
-	{ host: "meet.google.com", type: "path", pathPrefix: "" },
+	// Google Meet identifies the account with ?authuser=X on every URL (the
+	// home page and meeting links alike), not with /u/X/
+	{ host: "meet.google.com", type: "query" },
 
 	// AI / ML
 	{ host: "aistudio.google.com", type: "path", pathPrefix: "" },

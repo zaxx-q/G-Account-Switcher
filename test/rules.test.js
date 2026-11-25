@@ -159,6 +159,15 @@ describe("generateRules — behaviour on real-looking URLs", () => {
 		assert.equal(resolve(rules, "https://aistudio.google.com/prompts/new_chat").rule, null);
 	});
 
+	it("rewrites Meet's authuser= on every kind of URL, and ignores /u/N/", () => {
+		const rules = generateRules(0, { "meet.google.com": 2 }, true, false);
+		assert.equal(resolve(rules, "https://meet.google.com/?authuser=0").url, "https://meet.google.com/?authuser=2");
+		assert.equal(resolve(rules, "https://meet.google.com/abc-defg-hij?authuser=1").url, "https://meet.google.com/abc-defg-hij?authuser=2");
+		assert.equal(resolve(rules, "https://meet.google.com/meet/abc-defg-hij?pli=1&authuser=1").url, "https://meet.google.com/meet/abc-defg-hij?pli=1&authuser=2");
+		assert.equal(resolve(rules, "https://meet.google.com/u/1/landing").rule, null);
+		assert.equal(rules.length, 1);
+	});
+
 	it("rewrites authuser= on query-type domains, in any parameter order", () => {
 		const rules = generateRules(0, { "www.google.com": 2 }, true, false);
 		assert.equal(resolve(rules, "https://www.google.com/search?q=x&authuser=0").url, "https://www.google.com/search?q=x&authuser=2");

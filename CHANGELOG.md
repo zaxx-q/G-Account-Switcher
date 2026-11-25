@@ -3,6 +3,16 @@
 All notable changes to this project are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [3.3.1] - 2026-11-25
+ 
+### Fixed
+
+- **Google Meet now uses `authuser=N` on every URL instead of `/u/N/`.** The
+  home page and bare meeting codes were being rewritten to
+  `meet.google.com/u/N/...`, and a link that already carried `authuser=` ended
+  up with both. Existing Meet site settings are unaffected. `/u/N/` URLs on
+  Meet are no longer rewritten.
+
 ## [3.3.0] - 2026-11-15
 
 ### Fixed

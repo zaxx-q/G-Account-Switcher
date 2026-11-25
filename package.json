@@ -1,6 +1,6 @@
 {
 	"name": "g-account-switcher",
-	"version": "3.3.0",
+	"version": "3.3.1",
 	"private": true,
 	"description": "Assign specific Google accounts to individual Google sites (Chrome and Firefox, Manifest V3).",
 	"type": "module",

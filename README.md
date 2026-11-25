@@ -6,10 +6,10 @@ A lightweight Manifest V3 browser extension for **Chrome, other Chromium-based b
 
 Google identifies accounts by a numeric index (0, 1, 2, ...) in URLs via two patterns:
 
-| Pattern                      | Example                        | Services                                                                                                                                                                                                                                 |
-| ---------------------------- | ------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Path-based** `/u/X/`       | `mail.google.com/mail/u/1/`    | Gmail, Drive (folders), Calendar, Contacts, Keep, Chat, Tasks, Photos, Groups, Meet (lobby), Gemini, AI Studio, Cloud Console, Admin Console, My Account, Notifications, Translate                                                       |
-| **Query-based** `authuser=X` | `google.com/search?authuser=1` | Search, Maps, AI Mode, Docs, Sheets, Slides, Forms, Drawings, YouTube (+ Studio), Drive (file links), Meet (meeting links), NotebookLM, Play Store, Analytics, Tag Manager, Looker Studio, Search Console, Ads, AdSense, AdMob, Firebase |
+| Pattern                      | Example                        | Services                                                                                                                                                                                                                 |
+| ---------------------------- | ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **Path-based** `/u/X/`       | `mail.google.com/mail/u/1/`    | Gmail, Drive (folders), Calendar, Contacts, Keep, Chat, Tasks, Photos, Groups, Gemini, AI Studio, Cloud Console, Admin Console, My Account, Notifications, Translate                                                     |
+| **Query-based** `authuser=X` | `google.com/search?authuser=1` | Search, Maps, AI Mode, Docs, Sheets, Slides, Forms, Drawings, YouTube (+ Studio), Drive (file links), Meet, NotebookLM, Play Store, Analytics, Tag Manager, Looker Studio, Search Console, Ads, AdSense, AdMob, Firebase |
 
 This extension rewrites those indices using two layers (details in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)):
 

@@ -112,6 +112,19 @@ describe("buildAccountUrl — query domains", () => {
 		);
 	});
 
+	it("uses authuser= everywhere on Meet, never /u/N/", () => {
+		const meet = dom("https://meet.google.com/");
+		assert.equal(meet.type, "query");
+		// home page, bare meeting code, and /meet/<code> links all get authuser
+		assert.equal(buildAccountUrl("https://meet.google.com/", meet, 2), "https://meet.google.com/?authuser=2");
+		assert.equal(buildAccountUrl("https://meet.google.com/abc-defg-hij", meet, 2), "https://meet.google.com/abc-defg-hij?authuser=2");
+		assert.equal(buildAccountUrl("https://meet.google.com/meet/abc-defg-hij?pli=1", meet, 2), "https://meet.google.com/meet/abc-defg-hij?pli=1&authuser=2");
+		// an existing authuser is replaced, not joined by a /u/N/ segment
+		assert.equal(buildAccountUrl("https://meet.google.com/abc-defg-hij?authuser=1", meet, 2), "https://meet.google.com/abc-defg-hij?authuser=2");
+		assert.equal(extractAccount("https://meet.google.com/meet/abc-defg-hij?pli=1&authuser=2", meet), 2);
+		assert.equal(extractAccount("https://meet.google.com/u/1/landing", meet), null);
+	});
+
 	it("preserves the fragment", () => {
 		assert.equal(
 			buildAccountUrl("https://docs.google.com/document/d/abc/edit#heading=h.1", dom("https://docs.google.com/document/d/abc"), 4),

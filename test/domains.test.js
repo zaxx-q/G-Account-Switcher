@@ -83,6 +83,7 @@ describe("findMatchingDomain", () => {
 		["https://drive.google.com/drive/my-drive", "drive.google.com"],
 		["https://drive.google.com/file/d/abc/view", "drive.google.com"],
 		["https://meet.google.com/meet/abc-defg-hij", "meet.google.com"],
+		["https://meet.google.com/abc-defg-hij", "meet.google.com"],
 		["https://meet.google.com/", "meet.google.com"],
 		["https://www.youtube.com/watch?v=abc", "www.youtube.com"],
 		["https://studio.youtube.com/channel/x", "studio.youtube.com"],
@@ -98,7 +99,7 @@ describe("findMatchingDomain", () => {
 		assert.equal(findMatchingDomain("https://drive.google.com/drive/x").type, "path");
 		assert.equal(findMatchingDomain("https://drive.google.com/file/d/x").type, "query");
 		assert.equal(findMatchingDomain("https://meet.google.com/meet/x").type, "query");
-		assert.equal(findMatchingDomain("https://meet.google.com/").type, "path");
+		assert.equal(findMatchingDomain("https://meet.google.com/").type, "query");
 		assert.equal(findMatchingDomain("https://aistudio.google.com/").type, "path");
 	});
 
